@@ -1,14 +1,14 @@
-// app/create-booking/page.js
+// app/admin/create-booking/page.js
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'react-toastify';
 import { createBooking } from '@/Api/booking';
 import { getAllUsers } from '@/Api/Authentication';
 
-// ✅ location.js থেকে ফাংশন ইম্পোর্ট করুন
+// Location functions
 import { getStates, fetchCitiesByState, getPostalCodes } from '@/Api/location';
 
 // Icons
@@ -19,7 +19,7 @@ import {
   DollarSign, Edit3, Building, Home, Clock,
   Globe, Hash, Tag, Briefcase, Loader2, X, 
   User, Save, Info, Ruler, Users, UserPlus, Search,
-  CreditCard, Wallet, Repeat, Anchor, Train, DoorOpen
+  CreditCard, Wallet, Repeat, Anchor, Train, DoorOpen, TruckIcon
 } from 'lucide-react';
 
 // ==================== CONSTANTS ====================
@@ -78,6 +78,19 @@ const DESTINATIONS = [
   { value: 'UK', label: 'United Kingdom' },
   { value: 'Canada', label: 'Canada' }
 ];
+
+// ==================== CURRENCY CONSTANTS ====================
+const CURRENCY_BY_COUNTRY = {
+    'USA': 'USD',
+    'UK': 'GBP',
+    'Canada': 'CAD'
+};
+
+const CURRENCY_SYMBOLS = {
+    'USD': '$',
+    'GBP': '£',
+    'CAD': 'C$'
+};
 
 const PRODUCT_CATEGORIES = [
   'Electronics', 'Furniture', 'Clothing', 'Machinery', 
@@ -142,6 +155,9 @@ const Button = ({ children, type = 'button', variant = 'primary', size = 'md', i
 };
 
 const Input = ({ label, type = 'text', name, value, onChange, onBlur, placeholder, error, required = false, disabled = false, icon: Icon, className = '', ...props }) => {
+  const [touched, setTouched] = useState(false);
+  const showError = (touched || error) && error;
+  
   return (
     <div className="mb-3">
       {label && (
@@ -162,13 +178,13 @@ const Input = ({ label, type = 'text', name, value, onChange, onBlur, placeholde
           name={name}
           value={value || ''}
           onChange={onChange}
-          onBlur={onBlur}
+          onBlur={(e) => { setTouched(true); onBlur?.(e); }}
           placeholder={placeholder}
           disabled={disabled}
           className={`
             w-full px-3 py-2 text-sm border rounded-md shadow-sm
             focus:outline-none focus:ring-1 focus:ring-[#2563eb] focus:border-[#2563eb]
-            ${error ? 'border-red-300 bg-red-50' : 'border-gray-300'}
+            ${showError ? 'border-red-300 bg-red-50' : 'border-gray-300'}
             ${disabled ? 'bg-gray-50 cursor-not-allowed' : ''}
             ${Icon ? 'pl-8' : ''}
             ${className}
@@ -176,12 +192,15 @@ const Input = ({ label, type = 'text', name, value, onChange, onBlur, placeholde
           {...props}
         />
       </div>
-      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+      {showError && <p className="mt-1 text-xs text-red-500">{error}</p>}
     </div>
   );
 };
 
 const Select = ({ label, name, value, onChange, options, error, required = false, icon: Icon, placeholder = 'Select...', disabled = false, loading = false }) => {
+  const [touched, setTouched] = useState(false);
+  const showError = (touched || error) && error;
+  
   return (
     <div className="mb-3">
       {label && (
@@ -201,11 +220,12 @@ const Select = ({ label, name, value, onChange, options, error, required = false
           name={name}
           value={value || ''}
           onChange={onChange}
+          onBlur={() => setTouched(true)}
           disabled={disabled || loading}
           className={`
             w-full px-3 py-2 text-sm border rounded-md shadow-sm appearance-none
             focus:outline-none focus:ring-1 focus:ring-[#2563eb] focus:border-[#2563eb]
-            ${error ? 'border-red-300 bg-red-50' : 'border-gray-300'}
+            ${showError ? 'border-red-300 bg-red-50' : 'border-gray-300'}
             ${Icon ? 'pl-8' : ''}
             ${disabled || loading ? 'bg-gray-100 cursor-not-allowed' : ''}
           `}
@@ -228,12 +248,15 @@ const Select = ({ label, name, value, onChange, options, error, required = false
           <ChevronRight className="h-3.5 w-3.5 text-gray-400 transform rotate-90" />
         </div>
       </div>
-      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+      {showError && <p className="mt-1 text-xs text-red-500">{error}</p>}
     </div>
   );
 };
 
 const TextArea = ({ label, name, value, onChange, placeholder, error, required = false, rows = 3 }) => {
+  const [touched, setTouched] = useState(false);
+  const showError = (touched || error) && error;
+  
   return (
     <div className="mb-3">
       {label && (
@@ -247,15 +270,16 @@ const TextArea = ({ label, name, value, onChange, placeholder, error, required =
         name={name}
         value={value || ''}
         onChange={onChange}
+        onBlur={() => setTouched(true)}
         placeholder={placeholder}
         rows={rows}
         className={`
           w-full px-3 py-2 text-sm border rounded-md shadow-sm
           focus:outline-none focus:ring-1 focus:ring-[#2563eb] focus:border-[#2563eb]
-          ${error ? 'border-red-300 bg-red-50' : 'border-gray-300'}
+          ${showError ? 'border-red-300 bg-red-50' : 'border-gray-300'}
         `}
       />
-      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+      {showError && <p className="mt-1 text-xs text-red-500">{error}</p>}
     </div>
   );
 };
@@ -374,6 +398,8 @@ export default function CreateBooking() {
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [adminUser, setAdminUser] = useState(null);
   const [availableSubTypes, setAvailableSubTypes] = useState([]);
+  const [isReviewConfirmed, setIsReviewConfirmed] = useState(false);
+  const [pickupRequired, setPickupRequired] = useState(false);
   
   // Location States
   const [cities, setCities] = useState([]);
@@ -381,7 +407,7 @@ export default function CreateBooking() {
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [postalCodes, setPostalCodes] = useState([]);
 
-  // ===== Form Data State with Default Values =====
+  // ===== Form Data State =====
   const [formData, setFormData] = useState({
     customer: '',
     
@@ -485,282 +511,18 @@ export default function CreateBooking() {
   });
 
   const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({});
 
-  // ===== Location Functions (NO FETCH, সরাসরি ইম্পোর্ট করা ফাংশন) =====
-
-  // রাজ্য লোড করার ফাংশন - সরাসরি ইম্পোর্ট করা ফাংশন কল
- // ===== Location Functions (সঠিক ভার্সন) =====
-
-// এই ফাংশনগুলো আপডেট করুন
-
-const loadStates = (country) => {
-  if (!country) return;
-  
-  setLoadingLocation(true);
-  try {
-    console.log('🌍 Loading states for:', country);
-    const statesData = getStates(country);
-    
-    console.log('📦 States data received:', statesData);
-    
-    if (statesData && statesData.length > 0) {
-      // শুধু নামগুলো নিন
-      const stateNames = statesData.map(s => s.name);
-      setStates(stateNames);
-      console.log(`✅ Loaded ${stateNames.length} states:`, stateNames);
-      
-      // UK-এর জন্য বিশেষ নোটিফিকেশন
-      if (country === 'UK') {
-        toast.info(`UK states loaded: ${stateNames.join(', ')}`);
-      }
-    } else {
-      console.warn('⚠️ No states found for', country);
-      setStates([]);
-      toast.warning(`No states found for ${country}`);
-    }
-  } catch (error) {
-    console.error('❌ Error loading states:', error);
-    toast.error('Error loading states');
-  } finally {
-    setLoadingLocation(false);
-  }
-};
-
-const loadCities = (country, state) => {
-  if (!country || !state) return;
-  
-  setLoadingLocation(true);
-  try {
-    console.log('🌍 Loading cities for:', { country, state });
-    const citiesData = fetchCitiesByState(country, state);
-    
-    console.log('📦 Cities data received:', citiesData);
-    
-    if (citiesData && citiesData.length > 0) {
-      const cityNames = citiesData.map(c => c.name);
-      setCities(cityNames);
-      console.log(`✅ Loaded ${cityNames.length} cities:`, cityNames.slice(0, 5));
-      
-      // UK-এর জন্য সিটি দেখালে Toast
-      if (country === 'UK') {
-        toast.success(`Found ${cityNames.length} cities in ${state}`);
-      }
-    } else {
-      console.warn('⚠️ No cities found for', state);
-      setCities([]);
-      toast.warning(`No cities found for ${state}`);
-    }
-  } catch (error) {
-    console.error('❌ Error loading cities:', error);
-    toast.error('Error loading cities');
-  } finally {
-    setLoadingLocation(false);
-  }
-};
-
-// পোস্টাল কোড লোড করার ফাংশন
-const loadPostalCodes = (country, city) => {
-  if (!country || !city) return;
-  
-  setLoadingLocation(true);
-  try {
-    console.log('📮 Loading postal codes for:', city);
-    
-    // getPostalCodes ব্যবহার করুন (import করা ফাংশন)
-    const postalData = getPostalCodes(country, city);
-    
-    if (postalData && postalData.length > 0) {
-      setPostalCodes(postalData);
-      console.log(`✅ Loaded ${postalData.length} postal codes for ${city}`);
-    } else {
-      console.log('No postal codes found');
-      setPostalCodes([]);
-    }
-  } catch (error) {
-    console.error('Error loading postal codes:', error);
-    setPostalCodes([]);
-  } finally {
-    setLoadingLocation(false);
-  }
-};
-
-  // ===== Destination Change Handler
-  const handleDestinationChange = (e) => {
-    const { value } = e.target;
-    
-    handleInputChange(e);
-    
-    if (value) {
-      // Reset states and cities
-      setStates([]);
-      setCities([]);
-      setPostalCodes([]);
-      
-      // Load states for selected country - সরাসরি কল (async নেই)
-      loadStates(value);
-      
-      // Update receiver country
-      setFormData(prev => ({
-        ...prev,
-        receiver: {
-          ...prev.receiver,
-          address: {
-            ...prev.receiver.address,
-            country: value,
-            city: '',
-            state: '',
-            postalCode: ''
-          }
-        }
-      }));
-      
-      toast.success(`${value} selected - Please select state in Step 3`);
-    }
-  };
-
-  // State Change Handler
-  const handleStateChange = (e) => {
-    const { value } = e.target;
-    
-    handleInputChange(e);
-    
-    if (value && formData.receiver.address.country) {
-      // Reset cities and postal codes
-      setCities([]);
-      setPostalCodes([]);
-      
-      // Load cities for selected state - সরাসরি কল (async নেই)
-      loadCities(formData.receiver.address.country, value);
-      
-      setFormData(prev => ({
-        ...prev,
-        receiver: {
-          ...prev.receiver,
-          address: {
-            ...prev.receiver.address,
-            state: value,
-            city: '',
-            postalCode: ''
-          }
-        }
-      }));
-    }
-  };
-
-  // City Change Handler
-  const handleCityChange = (e) => {
-    const { value } = e.target;
-    
-    handleInputChange(e);
-    
-    if (value && formData.receiver.address.country) {
-      // Load postal codes for selected city
-      loadPostalCodes(formData.receiver.address.country, value);
-      
-      setFormData(prev => ({
-        ...prev,
-        receiver: {
-          ...prev.receiver,
-          address: {
-            ...prev.receiver.address,
-            city: value,
-            postalCode: ''
-          }
-        }
-      }));
-    }
-  };
-// লোকেশন ডিবাগ করার জন্য useEffect
-useEffect(() => {
-  if (formData.receiver.address.country === 'UK') {
-    console.log('🇬🇧 UK Selected - Testing location data');
-    
-    // সরাসরি প্যাকেজ থেকে টেস্ট
-    import('country-state-city').then(({ State, City }) => {
-      const states = State.getStatesOfCountry('GB');
-      console.log('Direct API - UK States:', states.map(s => s.name));
-      
-      if (states.length > 0) {
-        const england = states.find(s => s.name === 'England');
-        if (england) {
-          const cities = City.getCitiesOfState('GB', england.isoCode);
-          console.log('Direct API - England cities:', cities.length);
-        }
-      }
-    });
-  }
-}, [formData.receiver.address.country]);
-  // Update sub types when main type changes
-  useEffect(() => {
-    if (formData.shipmentClassification.mainType) {
-      setAvailableSubTypes(SHIPMENT_SUB_TYPES[formData.shipmentClassification.mainType] || []);
-    }
-  }, [formData.shipmentClassification.mainType]);
-
-  // Load admin user and customers on mount
+  // ==================== LOAD CUSTOMERS ====================
   useEffect(() => {
     const loadInitialData = async () => {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       setAdminUser(user);
       await loadCustomers();
-      
-      // Load saved draft if exists
-      const savedDraft = localStorage.getItem('bookingDraft');
-      if (savedDraft) {
-        try {
-          const draft = JSON.parse(savedDraft);
-          setFormData(prev => ({
-            ...prev,
-            ...draft,
-            shipmentDetails: {
-              ...prev.shipmentDetails,
-              ...draft.shipmentDetails
-            }
-          }));
-          if (draft.selectedCustomer) {
-            setSelectedCustomer(draft.selectedCustomer);
-          }
-          toast.info('Draft loaded automatically');
-        } catch (e) {
-          console.error('Error loading draft:', e);
-        }
-      }
     };
     loadInitialData();
   }, []);
-// লোকেশন ডিবাগ করার জন্য
-useEffect(() => {
-  console.log('📍 Location State Updated:', {
-    country: formData.receiver.address.country,
-    state: formData.receiver.address.state,
-    availableStates: states,
-    availableCities: cities,
-    loading: loadingLocation
-  });
-}, [formData.receiver.address.country, formData.receiver.address.state, states, cities, loadingLocation]);
 
-// UK সিলেক্ট করলে টেস্ট
-useEffect(() => {
-  if (formData.receiver.address.country === 'UK') {
-    console.log('🇬🇧 UK Selected - Testing with fallback data');
-    
-    // ফallback ডাটা টেস্ট
-    const testCities = fetchCitiesByState('UK', 'England');
-    console.log('Test cities for England:', testCities);
-  }
-}, [formData.receiver.address.country]);
-  // Debug useEffect
-  useEffect(() => {
-    console.log('📍 Step 3 - Cities state:', cities);
-    console.log('📍 Step 3 - States state:', states);
-    console.log('📍 Step 3 - Postal codes state:', postalCodes);
-    console.log('📍 Step 3 - Selected country:', formData.receiver.address.country);
-    console.log('📍 Step 3 - Selected state:', formData.receiver.address.state);
-    console.log('📍 Step 3 - Selected city:', formData.receiver.address.city);
-    console.log('📍 Step 3 - Loading:', loadingLocation);
-  }, [cities, states, postalCodes, formData.receiver.address.country, formData.receiver.address.state, formData.receiver.address.city, loadingLocation]);
-
-  // Load customers from API
   const loadCustomers = async () => {
     setLoadingCustomers(true);
     try {
@@ -783,54 +545,338 @@ useEffect(() => {
     }
   };
 
-  // Calculate totals from package details
-  useEffect(() => {
-    if (formData.shipmentDetails.packageDetails.length > 0) {
-      const totals = formData.shipmentDetails.packageDetails.reduce(
-        (acc, item) => ({
-          totalPackages: acc.totalPackages + (Number(item.quantity) || 0),
-          totalWeight: acc.totalWeight + ((Number(item.weight) || 0) * (Number(item.quantity) || 0)),
-          totalVolume: acc.totalVolume + ((Number(item.volume) || 0) * (Number(item.quantity) || 0))
-        }),
-        { totalPackages: 0, totalWeight: 0, totalVolume: 0 }
-      );
-
-      setFormData(prev => ({
-        ...prev,
-        shipmentDetails: { ...prev.shipmentDetails, ...totals }
-      }));
+  // ==================== LOCATION FUNCTIONS ====================
+  
+  const loadStates = useCallback((country) => {
+    if (!country) return;
+    
+    setLoadingLocation(true);
+    try {
+      const statesData = getStates(country);
+      if (statesData && statesData.length > 0) {
+        const stateNames = statesData.map(s => s.name);
+        setStates(stateNames);
+      } else {
+        setStates([]);
+      }
+    } catch (error) {
+      console.error('Error loading states:', error);
+      setStates([]);
+    } finally {
+      setLoadingLocation(false);
     }
-  }, [formData.shipmentDetails.packageDetails]);
+  }, []);
 
-  // Handle Input Change
+  const loadCities = useCallback((country, state) => {
+    if (!country || !state) return;
+    
+    setLoadingLocation(true);
+    try {
+      const citiesData = fetchCitiesByState(country, state);
+      if (citiesData && citiesData.length > 0) {
+        const cityNames = citiesData.map(c => c.name);
+        setCities(cityNames);
+      } else {
+        setCities([]);
+      }
+    } catch (error) {
+      console.error('Error loading cities:', error);
+      setCities([]);
+    } finally {
+      setLoadingLocation(false);
+    }
+  }, []);
+
+  const loadPostalCodes = useCallback((country, city) => {
+    if (!country || !city) return;
+    
+    setLoadingLocation(true);
+    try {
+      const postalData = getPostalCodes(country, city);
+      if (postalData && postalData.length > 0) {
+        setPostalCodes(postalData);
+      } else {
+        setPostalCodes([]);
+      }
+    } catch (error) {
+      console.error('Error loading postal codes:', error);
+      setPostalCodes([]);
+    } finally {
+      setLoadingLocation(false);
+    }
+  }, []);
+
+  // ==================== VALIDATION FUNCTIONS ====================
+  
+  const validateField = useCallback((name, value) => {
+    let error = '';
+    
+    // Step 1 validations
+    if (name === 'shipmentClassification.mainType') {
+      if (!value) error = 'Shipment type is required';
+    } else if (name === 'shipmentClassification.subType') {
+      if (!value) error = 'Shipment sub-type is required';
+    } else if (name === 'payment.mode') {
+      if (!value) error = 'Payment mode is required';
+    } else if (name === 'dates.estimatedDeparture') {
+      if (!value) error = 'Departure date is required';
+    } else if (name === 'dates.estimatedArrival') {
+      if (!value) error = 'Arrival date is required';
+    }
+    
+    // Step 2 validations
+    else if (name.includes('packageDetails')) {
+      const match = name.match(/packageDetails\[(\d+)\]\.(.+)/);
+      if (match) {
+        const [, index, field] = match;
+        if (field === 'description' && !value) {
+          error = 'Description is required';
+        } else if (field === 'quantity' && (!value || value < 1)) {
+          error = 'Minimum 1 item required';
+        } else if (field === 'weight' && (!value || value <= 0)) {
+          error = 'Weight is required';
+        }
+      }
+    }
+    
+    // Step 3 validations
+    else if (name === 'sender.name') {
+      if (!value) error = 'Sender name is required';
+    } else if (name === 'sender.email') {
+      if (!value) error = 'Sender email is required';
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) error = 'Invalid email format';
+    } else if (name === 'sender.phone') {
+      if (!value) error = 'Sender phone is required';
+    } else if (name === 'receiver.name') {
+      if (!value) error = 'Receiver name is required';
+    } else if (name === 'receiver.email') {
+      if (!value) error = 'Receiver email is required';
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) error = 'Invalid email format';
+    } else if (name === 'receiver.phone') {
+      if (!value) error = 'Receiver phone is required';
+    } else if (name === 'receiver.address.addressLine1') {
+      if (!value) error = 'Receiver address is required';
+    } else if (name === 'receiver.address.city') {
+      if (!value) error = 'City is required';
+    } else if (name === 'receiver.address.country') {
+      if (!value) error = 'Country is required';
+    } else if (name === 'receiver.address.state') {
+      if (!value) error = 'State is required';
+    } else if (name === 'sender.pickupDate' && pickupRequired) {
+      if (!value) error = 'Pickup date is required';
+    }
+    
+    return error;
+  }, [pickupRequired]);
+
+  const validateOnChange = useCallback((name, value) => {
+    const error = validateField(name, value);
+    setErrors(prev => ({ ...prev, [name]: error }));
+    return !error;
+  }, [validateField]);
+
+  const validateStep = useCallback((step) => {
+    const newErrors = {};
+    let isValid = true;
+    
+    if (step === 1) {
+      if (!selectedCustomer) {
+        newErrors.customer = 'Please select a customer';
+        isValid = false;
+      }
+      if (!formData.shipmentClassification.mainType) {
+        newErrors['shipmentClassification.mainType'] = 'Shipment type is required';
+        isValid = false;
+      }
+      if (!formData.shipmentClassification.subType) {
+        newErrors['shipmentClassification.subType'] = 'Shipment sub-type is required';
+        isValid = false;
+      }
+      if (!formData.payment.mode) {
+        newErrors['payment.mode'] = 'Payment mode is required';
+        isValid = false;
+      }
+      if (!formData.dates.estimatedDeparture) {
+        newErrors['dates.estimatedDeparture'] = 'Departure date is required';
+        isValid = false;
+      }
+      if (!formData.dates.estimatedArrival) {
+        newErrors['dates.estimatedArrival'] = 'Arrival date is required';
+        isValid = false;
+      }
+    }
+    
+    else if (step === 2) {
+      formData.shipmentDetails.packageDetails.forEach((item, index) => {
+        if (!item.description) {
+          newErrors[`package_desc_${index}`] = 'Description is required';
+          isValid = false;
+        }
+        if (!item.quantity || item.quantity < 1) {
+          newErrors[`package_qty_${index}`] = 'Minimum 1 item required';
+          isValid = false;
+        }
+        if (!item.weight || item.weight <= 0) {
+          newErrors[`package_weight_${index}`] = 'Weight is required';
+          isValid = false;
+        }
+      });
+    }
+    
+    else if (step === 3) {
+      if (!formData.sender.name) {
+        newErrors['sender.name'] = 'Sender name is required';
+        isValid = false;
+      }
+      if (!formData.sender.email) {
+        newErrors['sender.email'] = 'Sender email is required';
+        isValid = false;
+      }
+      if (!formData.sender.phone) {
+        newErrors['sender.phone'] = 'Sender phone is required';
+        isValid = false;
+      }
+      if (!formData.receiver.name) {
+        newErrors['receiver.name'] = 'Receiver name is required';
+        isValid = false;
+      }
+      if (!formData.receiver.email) {
+        newErrors['receiver.email'] = 'Receiver email is required';
+        isValid = false;
+      }
+      if (!formData.receiver.phone) {
+        newErrors['receiver.phone'] = 'Receiver phone is required';
+        isValid = false;
+      }
+      if (!formData.receiver.address.addressLine1) {
+        newErrors['receiver.address.addressLine1'] = 'Receiver address is required';
+        isValid = false;
+      }
+      if (!formData.receiver.address.city) {
+        newErrors['receiver.address.city'] = 'City is required';
+        isValid = false;
+      }
+      if (!formData.receiver.address.country) {
+        newErrors['receiver.address.country'] = 'Country is required';
+        isValid = false;
+      }
+      if (!formData.receiver.address.state) {
+        newErrors['receiver.address.state'] = 'State is required';
+        isValid = false;
+      }
+      if (pickupRequired && !formData.sender.pickupDate) {
+        newErrors['sender.pickupDate'] = 'Pickup date is required';
+        isValid = false;
+      }
+    }
+    
+    setErrors(prev => ({ ...prev, ...newErrors }));
+    return isValid;
+  }, [formData, selectedCustomer, pickupRequired]);
+
+  // ==================== HANDLERS ====================
+  
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    
-    console.log('🔄 Input Changed:', { name, value, type });
+    const finalValue = type === 'checkbox' ? checked : value;
     
     setFormData(prev => {
       const keys = name.split('.');
       const newFormData = JSON.parse(JSON.stringify(prev));
-      
       let current = newFormData;
       for (let i = 0; i < keys.length - 1; i++) {
         if (!current[keys[i]]) current[keys[i]] = {};
         current = current[keys[i]];
       }
-      
-      current[keys[keys.length - 1]] = type === 'checkbox' ? checked : value;
-      
-      localStorage.setItem('bookingDraft', JSON.stringify(newFormData));
-      
+      current[keys[keys.length - 1]] = finalValue;
       return newFormData;
     });
+    
+    validateOnChange(name, finalValue);
+    setTouched(prev => ({ ...prev, [name]: true }));
+  };
 
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }));
+  // Updated Destination Change Handler with Currency
+  const handleDestinationChange = (e) => {
+    const { value } = e.target;
+    handleInputChange(e);
+    
+    if (value) {
+      setStates([]);
+      setCities([]);
+      setPostalCodes([]);
+      loadStates(value);
+      
+      // Get currency for selected country
+      const currencyCode = CURRENCY_BY_COUNTRY[value] || 'USD';
+      
+      setFormData(prev => ({
+        ...prev,
+        receiver: {
+          ...prev.receiver,
+          address: {
+            ...prev.receiver.address,
+            country: value,
+            city: '',
+            state: '',
+            postalCode: ''
+          }
+        },
+        payment: {
+          ...prev.payment,
+          currency: currencyCode
+        }
+      }));
+      
+      toast.success(`${value} selected - Currency: ${currencyCode} (${CURRENCY_SYMBOLS[currencyCode]})`);
     }
   };
 
-  // Handle Package Change
+  const handleStateChange = (e) => {
+    const { value } = e.target;
+    handleInputChange(e);
+    
+    if (value && formData.receiver.address.country) {
+      setCities([]);
+      setPostalCodes([]);
+      loadCities(formData.receiver.address.country, value);
+      
+      setFormData(prev => ({
+        ...prev,
+        receiver: {
+          ...prev.receiver,
+          address: {
+            ...prev.receiver.address,
+            state: value,
+            city: '',
+            postalCode: ''
+          }
+        }
+      }));
+    }
+  };
+
+  const handleCityChange = (e) => {
+    const { value } = e.target;
+    handleInputChange(e);
+    
+    if (value && formData.receiver.address.country) {
+      loadPostalCodes(formData.receiver.address.country, value);
+      
+      setFormData(prev => ({
+        ...prev,
+        receiver: {
+          ...prev.receiver,
+          address: {
+            ...prev.receiver.address,
+            city: value,
+            postalCode: ''
+          }
+        }
+      }));
+    }
+  };
+
   const handlePackageChange = (index, field, value) => {
     setFormData(prev => {
       const newData = JSON.parse(JSON.stringify(prev));
@@ -851,210 +897,284 @@ useEffect(() => {
         newData.shipmentDetails.packageDetails[index].volume = parseFloat(volume.toFixed(3));
       }
       
-      localStorage.setItem('bookingDraft', JSON.stringify(newData));
-      
       return newData;
     });
+    
+    const errorKey = `package_${field}_${index}`;
+    let error = '';
+    if (field === 'description' && !value) error = 'Description is required';
+    if (field === 'quantity' && (!value || value < 1)) error = 'Minimum 1 item required';
+    if (field === 'weight' && (!value || value <= 0)) error = 'Weight is required';
+    
+    setErrors(prev => ({ ...prev, [errorKey]: error }));
   };
 
-  // Add Package Item
   const addPackageItem = () => {
-    setFormData(prev => {
-      const newData = {
+    setFormData(prev => ({
+      ...prev,
+      shipmentDetails: {
+        ...prev.shipmentDetails,
+        packageDetails: [
+          ...prev.shipmentDetails.packageDetails,
+          {
+            description: '',
+            packagingType: 'carton',
+            quantity: 1,
+            weight: 0,
+            volume: 0,
+            dimensions: { length: 0, width: 0, height: 0, unit: 'cm' },
+            productCategory: '',
+            hsCode: '',
+            value: { amount: 0, currency: formData.payment.currency || 'USD' },
+            hazardous: false,
+            temperatureControlled: { required: false, minTemp: null, maxTemp: null }
+          }
+        ]
+      }
+    }));
+  };
+
+  const removePackageItem = (index) => {
+    if (formData.shipmentDetails.packageDetails.length > 1) {
+      setFormData(prev => ({
         ...prev,
         shipmentDetails: {
           ...prev.shipmentDetails,
-          packageDetails: [
-            ...prev.shipmentDetails.packageDetails,
-            {
-              description: '',
-              packagingType: 'carton',
-              quantity: 1,
-              weight: 0,
-              volume: 0,
-              dimensions: {
-                length: 0,
-                width: 0,
-                height: 0,
-                unit: 'cm'
-              },
-              productCategory: '',
-              hsCode: '',
-              value: { amount: 0, currency: 'USD' },
-              hazardous: false,
-              temperatureControlled: {
-                required: false,
-                minTemp: null,
-                maxTemp: null
-              }
-            }
-          ]
+          packageDetails: prev.shipmentDetails.packageDetails.filter((_, i) => i !== index)
         }
-      };
-      localStorage.setItem('bookingDraft', JSON.stringify(newData));
-      return newData;
-    });
-  };
-
-  // Remove Package Item
-  const removePackageItem = (index) => {
-    if (formData.shipmentDetails.packageDetails.length > 1) {
-      setFormData(prev => {
-        const newData = {
-          ...prev,
-          shipmentDetails: {
-            ...prev.shipmentDetails,
-            packageDetails: prev.shipmentDetails.packageDetails.filter((_, i) => i !== index)
-          }
-        };
-        localStorage.setItem('bookingDraft', JSON.stringify(newData));
-        return newData;
-      });
+      }));
     }
   };
 
-  // Select Customer
   const selectCustomer = (customer) => {
     setSelectedCustomer(customer);
     
-    setFormData(prev => {
-      const newData = {
-        ...prev,
-        customer: customer._id,
-        sender: {
-          ...prev.sender,
-          name: `${customer.firstName || ''} ${customer.lastName || ''}`.trim(),
-          companyName: customer.companyName || '',
-          email: customer.email || '',
-          phone: customer.phone || '',
-          address: {
-            ...prev.sender.address,
-            addressLine1: customer.companyAddress || '',
-            country: customer.destinationMarkets?.[0] || ''
-          }
+    setFormData(prev => ({
+      ...prev,
+      customer: customer._id,
+      sender: {
+        ...prev.sender,
+        name: `${customer.firstName || ''} ${customer.lastName || ''}`.trim(),
+        companyName: customer.companyName || '',
+        email: customer.email || '',
+        phone: customer.phone || '',
+        address: {
+          ...prev.sender.address,
+          addressLine1: customer.companyAddress || '',
+          country: customer.destinationMarkets?.[0] || ''
         }
-      };
-      localStorage.setItem('bookingDraft', JSON.stringify(newData));
-      localStorage.setItem('selectedCustomer', JSON.stringify(customer));
-      return newData;
-    });
+      }
+    }));
     
     toast.success(`Customer ${customer.firstName} ${customer.lastName} selected`);
   };
 
-  // Validate Form
-  const validateForm = () => {
-    const newErrors = {};
+  // Calculate totals from package details
+  useEffect(() => {
+    if (formData.shipmentDetails.packageDetails.length > 0) {
+      const totals = formData.shipmentDetails.packageDetails.reduce(
+        (acc, item) => ({
+          totalPackages: acc.totalPackages + (Number(item.quantity) || 0),
+          totalWeight: acc.totalWeight + ((Number(item.weight) || 0) * (Number(item.quantity) || 0)),
+          totalVolume: acc.totalVolume + ((Number(item.volume) || 0) * (Number(item.quantity) || 0))
+        }),
+        { totalPackages: 0, totalWeight: 0, totalVolume: 0 }
+      );
 
-    if (!formData.customer) {
-      newErrors.customer = 'Please select a customer';
+      setFormData(prev => ({
+        ...prev,
+        shipmentDetails: { ...prev.shipmentDetails, ...totals }
+      }));
     }
+  }, [formData.shipmentDetails.packageDetails]);
 
-    if (!formData.shipmentClassification.mainType) {
-      newErrors['shipmentClassification.mainType'] = 'Shipment type is required';
+  // Update sub types when main type changes
+  useEffect(() => {
+    if (formData.shipmentClassification.mainType) {
+      setAvailableSubTypes(SHIPMENT_SUB_TYPES[formData.shipmentClassification.mainType] || []);
     }
-    if (!formData.shipmentClassification.subType) {
-      newErrors['shipmentClassification.subType'] = 'Shipment sub-type is required';
-    }
+  }, [formData.shipmentClassification.mainType]);
 
-    if (!formData.shipmentDetails.origin) {
-      newErrors['shipmentDetails.origin'] = 'Origin is required';
-    }
-    if (!formData.shipmentDetails.destination) {
-      newErrors['shipmentDetails.destination'] = 'Destination is required';
-    }
-
-    if (!formData.dates.estimatedDeparture) {
-      newErrors['dates.estimatedDeparture'] = 'Departure date is required';
-    }
-    if (!formData.dates.estimatedArrival) {
-      newErrors['dates.estimatedArrival'] = 'Arrival date is required';
-    }
-
-    if (formData.dates.estimatedDeparture && formData.dates.estimatedArrival) {
-      if (new Date(formData.dates.estimatedArrival) < new Date(formData.dates.estimatedDeparture)) {
-        newErrors['dates.estimatedArrival'] = 'Arrival date must be after departure date';
+  // ==================== STEP NAVIGATION ====================
+  
+  const nextStep = () => {
+    if (validateStep(currentStep)) {
+      setCurrentStep(prev => Math.min(prev + 1, 4));
+      if (currentStep + 1 === 4) {
+        setIsReviewConfirmed(false);
       }
+    } else {
+      toast.error('Please fill all required fields correctly');
     }
-
-    if (!formData.payment.mode) {
-      newErrors['payment.mode'] = 'Payment mode is required';
-    }
-
-    formData.shipmentDetails.packageDetails.forEach((item, index) => {
-      if (!item.description) {
-        newErrors[`package_desc_${index}`] = 'Description is required';
-      }
-      if (!item.quantity || item.quantity < 1) {
-        newErrors[`package_qty_${index}`] = 'Minimum 1 item required';
-      }
-      if (!item.weight || item.weight <= 0) {
-        newErrors[`package_weight_${index}`] = 'Weight is required';
-      }
-    });
-
-    if (!formData.sender.name) {
-      newErrors['sender.name'] = 'Sender name is required';
-    }
-    if (!formData.sender.email) {
-      newErrors['sender.email'] = 'Sender email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.sender.email)) {
-      newErrors['sender.email'] = 'Invalid email format';
-    }
-    if (!formData.sender.phone) {
-      newErrors['sender.phone'] = 'Sender phone is required';
-    }
-
-    if (!formData.receiver.name) {
-      newErrors['receiver.name'] = 'Receiver name is required';
-    }
-    if (!formData.receiver.email) {
-      newErrors['receiver.email'] = 'Receiver email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.receiver.email)) {
-      newErrors['receiver.email'] = 'Invalid email format';
-    }
-    if (!formData.receiver.phone) {
-      newErrors['receiver.phone'] = 'Receiver phone is required';
-    }
-    if (!formData.receiver.address.addressLine1) {
-      newErrors['receiver.address.addressLine1'] = 'Receiver address is required';
-    }
-    if (!formData.receiver.address.city) {
-      newErrors['receiver.address.city'] = 'City is required';
-    }
-    if (!formData.receiver.address.country) {
-      newErrors['receiver.address.country'] = 'Country is required';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
   };
 
-  // Handle Submit
+  const prevStep = () => {
+    setCurrentStep(prev => Math.max(prev - 1, 1));
+  };
+
+  // ==================== REVIEW CONFIRMATION ====================
+  
+  const handleConfirmReview = () => {
+    if (validateStep(3) && validateStep(2) && validateStep(1)) {
+      setIsReviewConfirmed(true);
+      toast.success('Details confirmed! You can now submit the booking.');
+    } else {
+      toast.error('Please complete all required fields before confirming');
+    }
+  };
+
+  // ==================== SUBMIT HANDLER ====================
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (currentStep !== 4) {
-      console.log('Not on step 4, current step:', currentStep);
+      toast.info('Please complete all steps first');
       return;
     }
-
-    const origin = formData.shipmentDetails?.origin;
-    const destination = formData.shipmentDetails?.destination;
-
-    console.log('🔍 Final Check - Origin:', origin, 'Destination:', destination);
-
-    if (!origin || !destination) {
-      toast.error('Origin and Destination are required! Please go back to Step 1.');
+    
+    if (!isReviewConfirmed) {
+      toast.warning('⚠️ Please review all details and click "Confirm Details" before creating booking');
+      return;
+    }
+    
+    // ========== CHECK ALL REQUIRED FIELDS ==========
+    
+    if (!selectedCustomer || !formData.customer) {
+      toast.error('❌ Please select a customer first');
       setCurrentStep(1);
       return;
     }
-
-    if (!validateForm()) {
-      toast.error('Please fill all required fields');
+    
+    if (!formData.shipmentClassification.mainType) {
+      toast.error('❌ Please select shipment type');
+      setCurrentStep(1);
       return;
     }
-
+    if (!formData.shipmentClassification.subType) {
+      toast.error('❌ Please select shipment sub-type');
+      setCurrentStep(1);
+      return;
+    }
+    
+    if (!formData.payment.mode) {
+      toast.error('❌ Please select payment mode');
+      setCurrentStep(1);
+      return;
+    }
+    
+    if (!formData.dates.estimatedDeparture) {
+      toast.error('📅 Please select departure date');
+      setCurrentStep(1);
+      return;
+    }
+    if (!formData.dates.estimatedArrival) {
+      toast.error('📅 Please select arrival date');
+      setCurrentStep(1);
+      return;
+    }
+    
+    if (formData.shipmentDetails.packageDetails.length === 0) {
+      toast.error('📦 Please add at least one package');
+      setCurrentStep(2);
+      return;
+    }
+    
+    let packageError = false;
+    for (let idx = 0; idx < formData.shipmentDetails.packageDetails.length; idx++) {
+      const pkg = formData.shipmentDetails.packageDetails[idx];
+      if (!pkg.description) {
+        toast.error(`📦 Package ${idx + 1}: Description is required`);
+        setCurrentStep(2);
+        packageError = true;
+        break;
+      }
+      if (!pkg.quantity || pkg.quantity < 1) {
+        toast.error(`📦 Package ${idx + 1}: Quantity must be at least 1`);
+        setCurrentStep(2);
+        packageError = true;
+        break;
+      }
+      if (!pkg.weight || pkg.weight <= 0) {
+        toast.error(`⚖️ Package ${idx + 1}: Weight is required`);
+        setCurrentStep(2);
+        packageError = true;
+        break;
+      }
+    }
+    if (packageError) return;
+    
+    if (!formData.sender.name) {
+      toast.error('👤 Sender name is required');
+      setCurrentStep(3);
+      return;
+    }
+    if (!formData.sender.email) {
+      toast.error('📧 Sender email is required');
+      setCurrentStep(3);
+      return;
+    }
+    if (!formData.sender.email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+      toast.error('📧 Please enter a valid sender email address');
+      setCurrentStep(3);
+      return;
+    }
+    if (!formData.sender.phone) {
+      toast.error('📞 Sender phone number is required');
+      setCurrentStep(3);
+      return;
+    }
+    
+    if (!formData.receiver.name) {
+      toast.error('👤 Receiver name is required');
+      setCurrentStep(3);
+      return;
+    }
+    if (!formData.receiver.email) {
+      toast.error('📧 Receiver email is required');
+      setCurrentStep(3);
+      return;
+    }
+    if (!formData.receiver.email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+      toast.error('📧 Please enter a valid receiver email address');
+      setCurrentStep(3);
+      return;
+    }
+    if (!formData.receiver.phone) {
+      toast.error('📞 Receiver phone number is required');
+      setCurrentStep(3);
+      return;
+    }
+    if (!formData.receiver.address.addressLine1) {
+      toast.error('📍 Receiver address is required');
+      setCurrentStep(3);
+      return;
+    }
+    if (!formData.receiver.address.city) {
+      toast.error('🏙️ Receiver city is required');
+      setCurrentStep(3);
+      return;
+    }
+    if (!formData.receiver.address.country) {
+      toast.error('🌍 Receiver country is required');
+      setCurrentStep(3);
+      return;
+    }
+    if (!formData.receiver.address.state) {
+      toast.error('🗺️ Receiver state is required');
+      setCurrentStep(3);
+      return;
+    }
+    
+    if (pickupRequired && !formData.sender.pickupDate) {
+      toast.error('🚚 Pickup date is required (Pickup Required is checked)');
+      setCurrentStep(3);
+      return;
+    }
+    
+    // ========== PREPARE AND SEND DATA ==========
+    const loadingToast = toast.loading('Creating booking... Please wait');
+    
     setIsSubmitting(true);
     setServerErrors([]);
 
@@ -1063,14 +1183,37 @@ useEffect(() => {
         customer: formData.customer,
         createdBy: adminUser?._id,
         
-        shipmentClassification: formData.shipmentClassification,
+        shipmentClassification: {
+          mainType: formData.shipmentClassification.mainType,
+          subType: formData.shipmentClassification.subType
+        },
+        
         serviceType: formData.serviceType,
         
         shipmentDetails: {
-          origin: origin,
-          destination: destination,
+          origin: formData.shipmentDetails.origin,
+          destination: formData.shipmentDetails.destination,
           shippingMode: formData.shipmentDetails.shippingMode,
-          packageDetails: formData.shipmentDetails.packageDetails,
+          packageDetails: formData.shipmentDetails.packageDetails.map(pkg => ({
+            description: pkg.description,
+            packagingType: pkg.packagingType,
+            quantity: Number(pkg.quantity),
+            weight: Number(pkg.weight),
+            volume: Number(pkg.volume),
+            dimensions: {
+              length: Number(pkg.dimensions.length) || 0,
+              width: Number(pkg.dimensions.width) || 0,
+              height: Number(pkg.dimensions.height) || 0,
+              unit: 'cm'
+            },
+            productCategory: pkg.productCategory || '',
+            hsCode: pkg.hsCode || '',
+            value: {
+              amount: Number(pkg.value.amount) || 0,
+              currency: formData.payment.currency || 'USD'
+            },
+            hazardous: pkg.hazardous || false
+          })),
           specialInstructions: formData.shipmentDetails.specialInstructions || '',
           referenceNumber: formData.customerReference || ''
         },
@@ -1085,9 +1228,44 @@ useEffect(() => {
           currency: formData.payment.currency || 'USD'
         },
         
-        sender: formData.sender,
-        receiver: formData.receiver,
-        courier: formData.courier,
+        sender: {
+          name: formData.sender.name,
+          companyName: formData.sender.companyName || '',
+          email: formData.sender.email,
+          phone: formData.sender.phone,
+          address: {
+            addressLine1: formData.sender.address.addressLine1 || '',
+            addressLine2: formData.sender.address.addressLine2 || '',
+            city: formData.sender.address.city || '',
+            state: formData.sender.address.state || '',
+            country: formData.sender.address.country || '',
+            postalCode: formData.sender.address.postalCode || ''
+          },
+          pickupDate: pickupRequired ? formData.sender.pickupDate : null,
+          pickupInstructions: pickupRequired ? formData.sender.pickupInstructions || '' : ''
+        },
+        
+        receiver: {
+          name: formData.receiver.name,
+          companyName: formData.receiver.companyName || '',
+          email: formData.receiver.email,
+          phone: formData.receiver.phone,
+          address: {
+            addressLine1: formData.receiver.address.addressLine1,
+            addressLine2: formData.receiver.address.addressLine2 || '',
+            city: formData.receiver.address.city,
+            state: formData.receiver.address.state,
+            country: formData.receiver.address.country,
+            postalCode: formData.receiver.address.postalCode || ''
+          },
+          deliveryInstructions: formData.receiver.deliveryInstructions || '',
+          isResidential: formData.receiver.isResidential || false
+        },
+        
+        courier: {
+          company: 'Cargo Logistics Group',
+          serviceType: formData.serviceType
+        },
         
         status: 'booking_requested',
         pricingStatus: 'pending',
@@ -1100,102 +1278,68 @@ useEffect(() => {
         }]
       };
 
-      console.log('📦 Sending booking data:', JSON.stringify(bookingData, null, 2));
+      console.log('📤 Sending booking data:', JSON.stringify(bookingData, null, 2));
 
       const response = await createBooking(bookingData);
       
+      toast.dismiss(loadingToast);
+      
       if (response.success) {
+        toast.success('🎉 Booking created successfully! Redirecting...');
         setShowSuccess(true);
-        toast.success('Booking created successfully!');
-        
-        localStorage.removeItem('bookingDraft');
-        localStorage.removeItem('selectedCustomer');
-        
         setTimeout(() => {
           router.push('/Bookings/all_bookings');
         }, 2000);
       } else {
-        setServerErrors([{ msg: response.message || 'Failed to create booking' }]);
-        toast.error(response.message || 'Failed to create booking');
-        setIsSubmitting(false);
+        const errorMsg = response.message || 'Failed to create booking';
+        toast.error(`❌ ${errorMsg}`);
+        setServerErrors([{ msg: errorMsg }]);
       }
     } catch (error) {
-      console.error('Error:', error);
-      setServerErrors([{ msg: error.message || 'Network error' }]);
-      toast.error(error.message || 'Network error');
+      toast.dismiss(loadingToast);
+      
+      console.error('❌ ERROR DETAILS:', error);
+      
+      let errorMessage = 'Failed to create booking';
+      
+      if (error.response?.data) {
+        if (typeof error.response.data === 'string') {
+          errorMessage = error.response.data;
+        } else if (error.response.data.message) {
+          errorMessage = error.response.data.message;
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error;
+        } else {
+          errorMessage = JSON.stringify(error.response.data);
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      if (errorMessage.toLowerCase().includes('customer')) {
+        toast.error('👤 Customer information is invalid. Please reselect customer.');
+      } else if (errorMessage.toLowerCase().includes('package')) {
+        toast.error('📦 Package details are incomplete. Please check all package fields.');
+      } else if (errorMessage.toLowerCase().includes('date')) {
+        toast.error('📅 Date information is invalid. Please check departure and arrival dates.');
+      } else if (errorMessage.toLowerCase().includes('address')) {
+        toast.error('📍 Address information is incomplete. Please check receiver address.');
+      } else if (errorMessage.toLowerCase().includes('email')) {
+        toast.error('📧 Email address is invalid. Please check sender and receiver emails.');
+      } else if (errorMessage.toLowerCase().includes('state') || errorMessage.toLowerCase().includes('city')) {
+        toast.error('🗺️ Location information is incomplete. Please select state and city.');
+      } else {
+        toast.error(`❌ ${errorMessage}`);
+      }
+      
+      setServerErrors([{ msg: errorMessage }]);
+    } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Next Step
-  const nextStep = () => {
-    let isValid = true;
-    
-    if (currentStep === 1) {
-      console.log('📋 Step 1 Values:', {
-        origin: formData.shipmentDetails.origin,
-        destination: formData.shipmentDetails.destination
-      });
-
-      if (!formData.customer) {
-        isValid = false;
-        toast.error('Please select a customer first');
-      } else if (!formData.shipmentClassification.mainType || 
-          !formData.shipmentClassification.subType) {
-        isValid = false;
-        toast.error('Please select shipment type and sub-type');
-      } else if (!formData.shipmentDetails.origin || !formData.shipmentDetails.destination) {
-        isValid = false;
-        toast.error('Please select origin and destination');
-      } else if (!formData.dates.estimatedDeparture || !formData.dates.estimatedArrival) {
-        isValid = false;
-        toast.error('Please select departure and arrival dates');
-      } else if (!formData.payment.mode) {
-        isValid = false;
-        toast.error('Please select payment mode');
-      }
-    } else if (currentStep === 2) {
-      const hasInvalidPackage = formData.shipmentDetails.packageDetails.some(
-        item => !item.description || !item.quantity || !item.weight
-      );
-      if (hasInvalidPackage) {
-        isValid = false;
-        toast.error('Please complete all package details');
-      }
-    } else if (currentStep === 3) {
-      if (!formData.sender.name || !formData.sender.email || !formData.sender.phone ||
-          !formData.receiver.name || !formData.receiver.email || !formData.receiver.phone ||
-          !formData.receiver.address.addressLine1 || !formData.receiver.address.city ||
-          !formData.receiver.address.country) {
-        isValid = false;
-        toast.error('Please complete all required fields');
-      }
-    }
-
-    if (isValid) {
-      localStorage.setItem('bookingDraft', JSON.stringify(formData));
-      setCurrentStep(prev => Math.min(prev + 1, 4));
-    }
-  };
-
-  const prevStep = () => {
-    setCurrentStep(prev => Math.max(prev - 1, 1));
-  };
-
-  // Save as Draft
-  const saveAsDraft = () => {
-    const draftData = {
-      ...formData,
-      selectedCustomer,
-      savedAt: new Date().toISOString()
-    };
-    localStorage.setItem('bookingDraft', JSON.stringify(draftData));
-    if (selectedCustomer) {
-      localStorage.setItem('selectedCustomer', JSON.stringify(selectedCustomer));
-    }
-    toast.info('Draft saved successfully!');
-  };
-
+  // ==================== RENDER ====================
+  
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -1219,14 +1363,6 @@ useEffect(() => {
             </div>
             
             <div className="flex items-center space-x-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={saveAsDraft}
-                icon={Save}
-              >
-                Save Draft
-              </Button>
               <span className="text-xs text-gray-500">
                 Step {currentStep}/4
               </span>
@@ -1402,16 +1538,40 @@ useEffect(() => {
                     icon={Briefcase}
                   />
                   
-                  <Select
-                    label="Payment Mode"
-                    name="payment.mode"
-                    value={formData.payment.mode}
-                    onChange={handleInputChange}
-                    options={PAYMENT_MODES}
-                    required
-                    icon={CreditCard}
-                    error={errors['payment.mode']}
-                  />
+                  {/* Payment Mode & Currency Display */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <Select
+                      label="Payment Mode"
+                      name="payment.mode"
+                      value={formData.payment.mode}
+                      onChange={handleInputChange}
+                      options={PAYMENT_MODES}
+                      required
+                      icon={CreditCard}
+                      error={errors['payment.mode']}
+                    />
+                    
+                    {/* Currency Display - NEW */}
+                    <div className="mb-3">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Currency
+                      </label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                          <DollarSign className="h-3.5 w-3.5 text-gray-400" />
+                        </div>
+                        <input
+                          type="text"
+                          value={`${formData.payment.currency} (${CURRENCY_SYMBOLS[formData.payment.currency] || '$'})`}
+                          disabled
+                          className="w-full px-3 py-2 pl-8 text-sm border rounded-md bg-gray-100 text-gray-700"
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Based on destination: {formData.shipmentDetails.destination}
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -1637,14 +1797,26 @@ useEffect(() => {
                           icon={DollarSign}
                           min="0"
                           step="0.01"
+                          placeholder="Enter value"
                         />
 
-                        <Select
-                          label="Currency"
-                          value={item.value.currency}
-                          onChange={(e) => handlePackageChange(index, 'value.currency', e.target.value)}
-                          options={CURRENCIES.map(curr => ({ value: curr, label: curr }))}
-                        />
+                        {/* Currency Display - Readonly based on destination */}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            Currency
+                          </label>
+                          <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                              <DollarSign className="h-3.5 w-3.5 text-gray-400" />
+                            </div>
+                            <input
+                              type="text"
+                              value={`${formData.payment.currency} (${CURRENCY_SYMBOLS[formData.payment.currency] || '$'})`}
+                              disabled
+                              className="w-full px-3 py-2 pl-8 text-sm border rounded-md bg-gray-100 text-gray-700"
+                            />
+                          </div>
+                        </div>
                       </div>
 
                       {/* Hazardous & Temperature Control */}
@@ -1812,24 +1984,47 @@ useEffect(() => {
                       onChange={handleInputChange}
                     />
 
-                    <Input
-                      label="Pickup Date"
-                      type="date"
-                      name="sender.pickupDate"
-                      value={formData.sender.pickupDate}
-                      onChange={handleInputChange}
-                      icon={Calendar}
-                      min={new Date().toISOString().split('T')[0]}
-                    />
+                    {/* Pickup Required Checkbox */}
+                    <div className="col-span-2 mt-2 pt-2 border-t">
+                      <label className="flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={pickupRequired}
+                          onChange={(e) => setPickupRequired(e.target.checked)}
+                          className="h-4 w-4 text-[#2563eb] focus:ring-[#2563eb] border-gray-300 rounded"
+                        />
+                        <span className="ml-2 text-sm font-medium text-gray-700">
+                          <TruckIcon className="h-4 w-4 inline mr-1 text-[#2563eb]" />
+                          Pickup Required?
+                        </span>
+                        <span className="ml-2 text-xs text-gray-500">(Arrange pickup from sender location)</span>
+                      </label>
+                    </div>
 
-                    <TextArea
-                      label="Pickup Instructions"
-                      name="sender.pickupInstructions"
-                      value={formData.sender.pickupInstructions}
-                      onChange={handleInputChange}
-                      placeholder="Special instructions for pickup"
-                      rows={2}
-                    />
+                    {pickupRequired && (
+                      <>
+                        <Input
+                          label="Pickup Date"
+                          type="date"
+                          name="sender.pickupDate"
+                          value={formData.sender.pickupDate}
+                          onChange={handleInputChange}
+                          required
+                          icon={Calendar}
+                          min={new Date().toISOString().split('T')[0]}
+                          error={errors['sender.pickupDate']}
+                        />
+
+                        <TextArea
+                          label="Pickup Instructions"
+                          name="sender.pickupInstructions"
+                          value={formData.sender.pickupInstructions}
+                          onChange={handleInputChange}
+                          placeholder="Special instructions for pickup"
+                          rows={2}
+                        />
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -1902,83 +2097,62 @@ useEffect(() => {
                         icon={MapPin}
                       />
                     </div>
- 
 
-{/* State Dropdown - Improved Version */}
-<div>
-  <Select
-    label="State"
-    name="receiver.address.state"
-    value={formData.receiver.address.state}
-    onChange={handleStateChange}
-    options={states.map(state => ({ value: state, label: state }))}
-    required
-    icon={MapPin}
-    error={errors['receiver.address.state']}
-    disabled={!formData.receiver.address.country || loadingLocation}
-    loading={loadingLocation}
-    placeholder={loadingLocation ? 'Loading states...' : 'Select state'}
-  />
-  
-  {/* Debug Info - Remove after fixing */}
-  {formData.receiver.address.country === 'UK' && (
-    <div className="mt-1 text-xs">
-      <span className="text-gray-500">States loaded: {states.length}</span>
-      {states.length > 0 && (
-        <span className="text-green-600 ml-2">✓ {states.slice(0, 3).join(', ')}...</span>
-      )}
-    </div>
-  )}
-</div>
+                    {/* Country Dropdown */}
+                    <Select
+                      label="Country"
+                      name="receiver.address.country"
+                      value={formData.receiver.address.country}
+                      onChange={handleDestinationChange}
+                      options={DESTINATIONS}
+                      required
+                      icon={Globe}
+                      error={errors['receiver.address.country']}
+                    />
 
-{/* City Dropdown - Improved Version */}
-<div>
-  <Select
-    label="City"
-    name="receiver.address.city"
-    value={formData.receiver.address.city}
-    onChange={handleCityChange}
-    options={cities.map(city => ({ value: city, label: city }))}
-    required
-    icon={MapPin}
-    error={errors['receiver.address.city']}
-    disabled={!formData.receiver.address.state || loadingLocation}
-    loading={loadingLocation}
-    placeholder={loadingLocation ? 'Loading cities...' : 'Select city'}
-  />
-  
-  {/* Debug Info - Remove after fixing */}
-  {formData.receiver.address.state && (
-    <div className="mt-1 text-xs">
-      <span className="text-gray-500">Cities loaded: {cities.length}</span>
-      {cities.length > 0 && (
-        <span className="text-green-600 ml-2">✓ {cities.slice(0, 3).join(', ')}...</span>
-      )}
-    </div>
-  )}
-</div>
+                    {/* State Dropdown */}
+                    <Select
+                      label="State"
+                      name="receiver.address.state"
+                      value={formData.receiver.address.state}
+                      onChange={handleStateChange}
+                      options={states.map(state => ({ value: state, label: state }))}
+                      required
+                      icon={MapPin}
+                      error={errors['receiver.address.state']}
+                      disabled={!formData.receiver.address.country || loadingLocation}
+                      loading={loadingLocation}
+                      placeholder={loadingLocation ? 'Loading states...' : 'Select state'}
+                    />
+
+                    {/* City Dropdown */}
+                    <Select
+                      label="City"
+                      name="receiver.address.city"
+                      value={formData.receiver.address.city}
+                      onChange={handleCityChange}
+                      options={cities.map(city => ({ value: city, label: city }))}
+                      required
+                      icon={MapPin}
+                      error={errors['receiver.address.city']}
+                      disabled={!formData.receiver.address.state || loadingLocation}
+                      loading={loadingLocation}
+                      placeholder={loadingLocation ? 'Loading cities...' : 'Select city'}
+                    />
 
                     {/* Postal Code Dropdown */}
-                    <div>
-                      <Select
-                        label="Postal Code"
-                        name="receiver.address.postalCode"
-                        value={formData.receiver.address.postalCode}
-                        onChange={handleInputChange}
-                        options={postalCodes.map(code => ({ value: code, label: code }))}
-                        icon={MapPin}
-                        error={errors['receiver.address.postalCode']}
-                        disabled={!formData.receiver.address.city || loadingLocation}
-                        loading={loadingLocation}
-                        placeholder={loadingLocation ? 'Loading codes...' : 'Select postal code'}
-                      />
-                      
-                      {postalCodes.length > 0 && (
-                        <div className="mt-1 text-xs text-gray-500">
-                          {postalCodes.length} postal codes available
-                        </div>
-                      )}
-                    </div>
+                    <Select
+                      label="Postal Code"
+                      name="receiver.address.postalCode"
+                      value={formData.receiver.address.postalCode}
+                      onChange={handleInputChange}
+                      options={postalCodes.map(code => ({ value: code, label: code }))}
+                      icon={MapPin}
+                      error={errors['receiver.address.postalCode']}
+                      disabled={!formData.receiver.address.city || loadingLocation}
+                      loading={loadingLocation}
+                      placeholder={loadingLocation ? 'Loading codes...' : 'Select postal code'}
+                    />
 
                     <div className="col-span-2">
                       <TextArea
@@ -2012,22 +2186,42 @@ useEffect(() => {
                       <span className="text-xs text-blue-600">Loading location data...</span>
                     </div>
                   )}
-
-                  {/* Selected country info */}
-                  {formData.receiver.address.country && !loadingLocation && (
-                    <div className="mt-3 p-2 bg-green-50 rounded-md">
-                      <p className="text-xs text-green-700">
-                        ✓ Showing states for {formData.receiver.address.country}
-                      </p>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
 
-            {/* Step 4: Review */}
+            {/* Step 4: Review & Confirm */}
             {currentStep === 4 && (
               <div className="space-y-3 animate-fadeIn">
+                {/* Confirmation Required Banner */}
+                {!isReviewConfirmed && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-3">
+                    <div className="flex items-start">
+                      <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                      <div className="ml-2 flex-1">
+                        <p className="text-xs font-medium text-yellow-800">Review Required</p>
+                        <p className="text-xs text-yellow-700 mt-1">
+                          Please review all details below. Once confirmed, click "Confirm Details" before submitting.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {isReviewConfirmed && (
+                  <div className="bg-green-50 border border-green-200 rounded-md p-3 mb-3">
+                    <div className="flex items-start">
+                      <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <div className="ml-2 flex-1">
+                        <p className="text-xs font-medium text-green-800">Details Confirmed</p>
+                        <p className="text-xs text-green-700 mt-1">
+                          You can now submit the booking.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-gray-50 rounded-md p-3">
                   <h3 className="text-xs font-medium text-gray-700 mb-2 flex items-center">
                     <Package className="h-3.5 w-3.5 mr-1 text-[#2563eb]" />
@@ -2063,6 +2257,12 @@ useEffect(() => {
                       <span className="font-medium">{formData.shipmentDetails.destination}</span>
                     </div>
                     <div>
+                      <span className="text-gray-500">Currency:</span>{' '}
+                      <span className="font-medium">
+                        {formData.payment.currency} ({CURRENCY_SYMBOLS[formData.payment.currency]})
+                      </span>
+                    </div>
+                    <div>
                       <span className="text-gray-500">Service:</span>{' '}
                       <span className="font-medium">{formData.serviceType}</span>
                     </div>
@@ -2073,6 +2273,10 @@ useEffect(() => {
                     <div>
                       <span className="text-gray-500">Arrival:</span>{' '}
                       <span className="font-medium">{new Date(formData.dates.estimatedArrival).toLocaleDateString()}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Pickup Required:</span>{' '}
+                      <span className="font-medium">{pickupRequired ? 'Yes' : 'No'}</span>
                     </div>
                   </div>
                 </div>
@@ -2092,7 +2296,7 @@ useEffect(() => {
                             {item.hazardous && ' ⚠️ Hazardous'}
                           </span>
                           {item.value.amount > 0 && (
-                            <span className="font-medium">{item.value.currency} {item.value.amount.toLocaleString()}</span>
+                            <span className="font-medium">{formData.payment.currency} {item.value.amount.toLocaleString()}</span>
                           )}
                         </div>
                       </div>
@@ -2128,6 +2332,9 @@ useEffect(() => {
                       <p className="text-gray-600 mt-1">
                         {formData.sender.address.city}, {formData.sender.address.state}, {formData.sender.address.country}
                       </p>
+                      {pickupRequired && formData.sender.pickupDate && (
+                        <p className="text-blue-600 mt-1">📅 Pickup: {new Date(formData.sender.pickupDate).toLocaleDateString()}</p>
+                      )}
                     </div>
                   </div>
 
@@ -2190,15 +2397,29 @@ useEffect(() => {
                   Next Step
                 </Button>
               ) : (
-                <Button
-                  type="submit"
-                  variant="success"
-                  size="sm"
-                  isLoading={isSubmitting}
-                  icon={Save}
-                >
-                  Create Booking
-                </Button>
+                <div className="flex space-x-3">
+                  {!isReviewConfirmed ? (
+                    <Button
+                      type="button"
+                      variant="success"
+                      size="sm"
+                      onClick={handleConfirmReview}
+                      icon={CheckCircle}
+                    >
+                      Confirm Details
+                    </Button>
+                  ) : (
+                    <Button
+                      type="submit"
+                      variant="success"
+                      size="sm"
+                      isLoading={isSubmitting}
+                      icon={Save}
+                    >
+                      Create Booking
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -2210,7 +2431,7 @@ useEffect(() => {
             {currentStep === 1 && "📦 Select customer, shipment type and destination country"}
             {currentStep === 2 && "📦 Add package details with packaging type"}
             {currentStep === 3 && "📦 Enter sender and receiver information"}
-            {currentStep === 4 && "📦 Review and confirm booking"}
+            {currentStep === 4 && "📦 Review and confirm booking - Click 'Confirm Details' then 'Create Booking'"}
           </p>
         </div>
       </div>

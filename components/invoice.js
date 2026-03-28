@@ -39,6 +39,207 @@ import {
   PieChart, BarChart3, Package, MapPin, Hash, Info
 } from 'lucide-react';
 
+// ==================== PDF IMPORTS & FUNCTIONS ====================
+import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
+import { pdf } from '@react-pdf/renderer';
+import JSZip from 'jszip';
+
+// PDF Styles
+Font.register({
+  family: 'Helvetica',
+  src: 'https://fonts.gstatic.com/s/helvetica/v1/Helvetica.ttf'
+});
+
+const pdfStyles = StyleSheet.create({
+  page: { padding: 40, fontSize: 10, fontFamily: 'Helvetica', backgroundColor: '#FFFFFF' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30, borderBottom: '2px solid #E67E22', paddingBottom: 20 },
+  companySection: { flex: 1 },
+  companyName: { fontSize: 24, fontWeight: 'bold', color: '#E67E22', marginBottom: 5 },
+  companyAddress: { fontSize: 9, color: '#4B5563', marginBottom: 2 },
+  invoiceSection: { flex: 1, alignItems: 'flex-end' },
+  invoiceTitle: { fontSize: 28, fontWeight: 'bold', color: '#E67E22', marginBottom: 10 },
+  invoiceDetails: { fontSize: 10, color: '#4B5563', textAlign: 'right' },
+  status: { padding: 8, borderRadius: 4, marginBottom: 20, textAlign: 'center', fontWeight: 'bold', fontSize: 12 },
+  statusPaid: { backgroundColor: '#D1FAE5', color: '#065F46' },
+  statusPending: { backgroundColor: '#FEF3C7', color: '#92400E' },
+  statusOverdue: { backgroundColor: '#FEE2E2', color: '#991B1B' },
+  statusDraft: { backgroundColor: '#F3F4F6', color: '#374151' },
+  section: { marginBottom: 20 },
+  sectionTitle: { fontSize: 12, fontWeight: 'bold', marginBottom: 10, backgroundColor: '#F97316', color: 'white', padding: 6, borderRadius: 4 },
+  row: { flexDirection: 'row', marginBottom: 6, paddingHorizontal: 4 },
+  label: { fontWeight: 'bold', width: '30%', fontSize: 9, color: '#374151' },
+  value: { width: '70%', fontSize: 9, color: '#1F2937' },
+  table: { marginTop: 10, marginBottom: 20 },
+  tableHeader: { flexDirection: 'row', backgroundColor: '#F3F4F6', padding: 8, fontWeight: 'bold', fontSize: 9, borderBottom: '1px solid #E5E7EB' },
+  tableRow: { flexDirection: 'row', padding: 8, borderBottom: '1px solid #F3F4F6' },
+  col1: { width: '45%', fontSize: 9 },
+  col2: { width: '20%', fontSize: 9, textAlign: 'center' },
+  col3: { width: '20%', fontSize: 9, textAlign: 'right' },
+  col4: { width: '15%', fontSize: 9, textAlign: 'right' },
+  totalSection: { marginTop: 20, alignItems: 'flex-end', borderTop: '1px solid #E5E7EB', paddingTop: 15 },
+  totalRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 6, width: '50%' },
+  totalLabel: { fontSize: 10, fontWeight: 'bold', width: '40%', textAlign: 'right', paddingRight: 10 },
+  totalValue: { fontSize: 10, width: '60%', textAlign: 'right' },
+  grandTotalRow: { marginTop: 5, borderTop: '1px solid #E67E22', paddingTop: 8 },
+  grandTotalLabel: { fontSize: 14, fontWeight: 'bold', color: '#E67E22' },
+  grandTotalValue: { fontSize: 14, fontWeight: 'bold', color: '#E67E22' },
+  paymentInfo: { marginTop: 20, backgroundColor: '#F9FAFB', padding: 12, borderRadius: 4 },
+  footer: { position: 'absolute', bottom: 30, left: 40, right: 40, textAlign: 'center', fontSize: 8, color: '#9CA3AF', borderTop: '1px solid #E5E7EB', paddingTop: 10 },
+  thankYou: { fontSize: 10, fontWeight: 'bold', color: '#E67E22', marginBottom: 4 }
+});
+
+// PDF Helper Functions
+const formatCurrencyPDF = (amount, currency = 'USD') => {
+  if (!amount && amount !== 0) return 'N/A';
+  const symbols = { USD: '$', EUR: '€', GBP: '£', BDT: '৳', INR: '₹' };
+  return `${symbols[currency] || '$'}${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+};
+
+const formatDatePDF = (date) => {
+  if (!date) return 'N/A';
+  return new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+};
+
+const getStatusStylePDF = (paymentStatus) => {
+  switch (paymentStatus) {
+    case 'paid': return pdfStyles.statusPaid;
+    case 'pending': return pdfStyles.statusPending;
+    case 'overdue': return pdfStyles.statusOverdue;
+    default: return pdfStyles.statusDraft;
+  }
+};
+
+const getStatusTextPDF = (paymentStatus) => {
+  switch (paymentStatus) {
+    case 'paid': return '✓ PAID';
+    case 'pending': return '⏳ PENDING';
+    case 'overdue': return '⚠️ OVERDUE';
+    default: return '📄 DRAFT';
+  }
+};
+
+// PDF Component
+const InvoicePDF = ({ invoice, companyInfo }) => {
+  const defaultCompany = {
+    name: 'B2B Logistics Group',
+    address: '123 Business Avenue, Commercial Area',
+    city: 'Dhaka, Bangladesh 1212',
+    phone: '+880 1234-567890',
+    email: 'info@b2blogistics.com'
+  };
+  const info = companyInfo || defaultCompany;
+
+  return (
+    <Document>
+      <Page size="A4" style={pdfStyles.page}>
+        <View style={pdfStyles.header}>
+          <View style={pdfStyles.companySection}>
+            <Text style={pdfStyles.companyName}>{info.name}</Text>
+            <Text style={pdfStyles.companyAddress}>{info.address}</Text>
+            <Text style={pdfStyles.companyAddress}>{info.city}</Text>
+            <Text style={pdfStyles.companyAddress}>Phone: {info.phone}</Text>
+            <Text style={pdfStyles.companyAddress}>Email: {info.email}</Text>
+          </View>
+          <View style={pdfStyles.invoiceSection}>
+            <Text style={pdfStyles.invoiceTitle}>INVOICE</Text>
+            <Text style={pdfStyles.invoiceDetails}>#{invoice.invoiceNumber}</Text>
+            <Text style={pdfStyles.invoiceDetails}>Date: {formatDatePDF(invoice.invoiceDate)}</Text>
+            <Text style={pdfStyles.invoiceDetails}>Due Date: {formatDatePDF(invoice.dueDate)}</Text>
+          </View>
+        </View>
+
+        <View style={[pdfStyles.status, getStatusStylePDF(invoice.paymentStatus)]}>
+          <Text>{getStatusTextPDF(invoice.paymentStatus)}</Text>
+        </View>
+
+        <View style={pdfStyles.section}>
+          <Text style={pdfStyles.sectionTitle}>BILL TO</Text>
+          <View style={pdfStyles.row}><Text style={pdfStyles.label}>Company:</Text><Text style={pdfStyles.value}>{invoice.customerInfo?.companyName || 'N/A'}</Text></View>
+          <View style={pdfStyles.row}><Text style={pdfStyles.label}>Contact:</Text><Text style={pdfStyles.value}>{invoice.customerInfo?.contactPerson || 'N/A'}</Text></View>
+          <View style={pdfStyles.row}><Text style={pdfStyles.label}>Email:</Text><Text style={pdfStyles.value}>{invoice.customerInfo?.email || 'N/A'}</Text></View>
+          <View style={pdfStyles.row}><Text style={pdfStyles.label}>Phone:</Text><Text style={pdfStyles.value}>{invoice.customerInfo?.phone || 'N/A'}</Text></View>
+          <View style={pdfStyles.row}><Text style={pdfStyles.label}>Address:</Text><Text style={pdfStyles.value}>{invoice.customerInfo?.address || 'N/A'}</Text></View>
+        </View>
+
+        <View style={pdfStyles.table}>
+          <View style={pdfStyles.tableHeader}>
+            <Text style={pdfStyles.col1}>Description</Text>
+            <Text style={pdfStyles.col2}>Type</Text>
+            <Text style={pdfStyles.col3}>Amount</Text>
+            <Text style={pdfStyles.col4}>Currency</Text>
+          </View>
+          {invoice.charges && invoice.charges.length > 0 ? (
+            invoice.charges.map((charge, idx) => (
+              <View key={idx} style={pdfStyles.tableRow}>
+                <Text style={pdfStyles.col1}>{charge.description}</Text>
+                <Text style={pdfStyles.col2}>{charge.type}</Text>
+                <Text style={pdfStyles.col3}>{formatCurrencyPDF(charge.amount, charge.currency)}</Text>
+                <Text style={pdfStyles.col4}>{charge.currency}</Text>
+              </View>
+            ))
+          ) : (
+            <View style={pdfStyles.tableRow}>
+              <Text style={pdfStyles.col1}>No charges specified</Text>
+              <Text style={pdfStyles.col2}>-</Text>
+              <Text style={pdfStyles.col3}>-</Text>
+              <Text style={pdfStyles.col4}>-</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={pdfStyles.totalSection}>
+          <View style={pdfStyles.totalRow}><Text style={pdfStyles.totalLabel}>Subtotal:</Text><Text style={pdfStyles.totalValue}>{formatCurrencyPDF(invoice.subtotal, invoice.currency)}</Text></View>
+          <View style={pdfStyles.totalRow}><Text style={pdfStyles.totalLabel}>Tax ({invoice.taxRate || 0}%):</Text><Text style={pdfStyles.totalValue}>{formatCurrencyPDF(invoice.taxAmount, invoice.currency)}</Text></View>
+          {invoice.discountAmount > 0 && <View style={pdfStyles.totalRow}><Text style={pdfStyles.totalLabel}>Discount:</Text><Text style={pdfStyles.totalValue}>-{formatCurrencyPDF(invoice.discountAmount, invoice.currency)}</Text></View>}
+          <View style={[pdfStyles.totalRow, pdfStyles.grandTotalRow]}><Text style={[pdfStyles.totalLabel, pdfStyles.grandTotalLabel]}>TOTAL:</Text><Text style={[pdfStyles.totalValue, pdfStyles.grandTotalValue]}>{formatCurrencyPDF(invoice.totalAmount, invoice.currency)}</Text></View>
+        </View>
+
+        {invoice.paymentStatus === 'paid' && (
+          <View style={pdfStyles.paymentInfo}>
+            <Text style={pdfStyles.sectionTitle}>PAYMENT INFORMATION</Text>
+            <View style={pdfStyles.row}><Text style={pdfStyles.label}>Method:</Text><Text style={pdfStyles.value}>{invoice.paymentMethod || 'N/A'}</Text></View>
+            <View style={pdfStyles.row}><Text style={pdfStyles.label}>Date:</Text><Text style={pdfStyles.value}>{formatDatePDF(invoice.paymentDate)}</Text></View>
+          </View>
+        )}
+
+        {invoice.notes && <View style={pdfStyles.section}><Text style={pdfStyles.sectionTitle}>NOTES</Text><Text style={{ fontSize: 8 }}>{invoice.notes}</Text></View>}
+        
+        <View style={pdfStyles.footer}>
+          <Text style={pdfStyles.thankYou}>Thank you for your business!</Text>
+          <Text>For inquiries: {info.email} | {info.phone}</Text>
+        </View>
+      </Page>
+    </Document>
+  );
+};
+
+const COMPANY_INFO = {
+  name: 'B2B Logistics Group',
+  address: '123 Business Avenue, Commercial Area',
+  city: 'Dhaka, Bangladesh 1212',
+  phone: '+880 1234-567890',
+  email: 'info@b2blogistics.com'
+};
+
+// PDF Download Function
+const generateAndDownloadSinglePDF = async (invoice) => {
+  try {
+    const blob = await pdf(<InvoicePDF invoice={invoice} companyInfo={COMPANY_INFO} />).toBlob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `invoice-${invoice.invoiceNumber}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    return { success: true, message: 'PDF downloaded successfully' };
+  } catch (error) {
+    console.error('PDF generation error:', error);
+    return { success: false, message: error.message };
+  }
+};
+
 // ==================== CONSTANTS ====================
 
 const INVOICE_STATUS = {
@@ -191,7 +392,7 @@ const StatusBadge = ({ status, type = 'invoice' }) => {
   );
 };
 
-// Invoice Card Component (for mobile/table view)
+// Invoice Card Component
 const InvoiceCard = ({ invoice, onView, onEdit, onDelete, onMarkPaid, onPDF }) => {
   const statusInfo = getStatusInfo(invoice.status);
   const paymentInfo = getStatusInfo(invoice.paymentStatus, 'payment');
@@ -203,7 +404,6 @@ const InvoiceCard = ({ invoice, onView, onEdit, onDelete, onMarkPaid, onPDF }) =
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-all mb-3">
-      {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center space-x-2">
           <div className="p-2 bg-orange-50 rounded-lg">
@@ -243,7 +443,6 @@ const InvoiceCard = ({ invoice, onView, onEdit, onDelete, onMarkPaid, onPDF }) =
         </div>
       </div>
 
-      {/* Customer */}
       <div className="flex items-center space-x-2 mb-3 p-2 bg-gray-50 rounded-lg">
         <div className="w-6 h-6 bg-orange-100 rounded-full flex items-center justify-center">
           <span className="text-xs font-medium text-[#E67E22]">
@@ -256,7 +455,6 @@ const InvoiceCard = ({ invoice, onView, onEdit, onDelete, onMarkPaid, onPDF }) =
         </div>
       </div>
 
-      {/* Details Grid */}
       <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
         <div>
           <p className="text-xs text-gray-500">Due Date</p>
@@ -278,14 +476,12 @@ const InvoiceCard = ({ invoice, onView, onEdit, onDelete, onMarkPaid, onPDF }) =
         </div>
       </div>
 
-      {/* Statuses */}
       <div className="flex items-center justify-between pt-2 border-t">
         <div className="flex items-center space-x-2">
           <StatusBadge status={invoice.status} />
           <StatusBadge status={invoice.paymentStatus} type="payment" />
         </div>
         
-        {/* Actions */}
         <div className="flex items-center space-x-1">
           {canMarkAsPaid(invoice.paymentStatus) && (
             <button
@@ -329,7 +525,7 @@ const InvoiceTableRow = ({ invoice, onView, onEdit, onDelete, onMarkPaid, onPDF,
           onChange={() => onSelect(invoice._id)}
           className="rounded border-gray-300 text-[#E67E22] focus:ring-[#E67E22]"
         />
-      </td>
+       </td>
       <td className="px-4 py-3">
         <div className="flex items-center space-x-2">
           <Receipt className="h-4 w-4 text-[#E67E22]" />
@@ -434,7 +630,6 @@ const FilterBar = ({ filters, onFilterChange, onSearch, searchTerm, onRefresh })
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
-      {/* Search and Basic Filters */}
       <div className="flex flex-col lg:flex-row lg:items-center gap-3">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -489,7 +684,6 @@ const FilterBar = ({ filters, onFilterChange, onSearch, searchTerm, onRefresh })
         </div>
       </div>
 
-      {/* Advanced Filters */}
       {showFilters && (
         <div className="mt-4 pt-4 border-t grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
@@ -557,7 +751,6 @@ const InvoiceDetailsModal = ({ isOpen, onClose, invoice, onMarkPaid, onPDF, onSe
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        {/* Header */}
         <div className="sticky top-0 bg-white border-b p-6">
           <div className="flex justify-between items-start">
             <div className="flex items-center space-x-3">
@@ -576,7 +769,6 @@ const InvoiceDetailsModal = ({ isOpen, onClose, invoice, onMarkPaid, onPDF, onSe
             </button>
           </div>
 
-          {/* Tabs */}
           <div className="flex space-x-4 mt-4">
             <button
               onClick={() => setActiveTab('details')}
@@ -611,11 +803,9 @@ const InvoiceDetailsModal = ({ isOpen, onClose, invoice, onMarkPaid, onPDF, onSe
           </div>
         </div>
 
-        {/* Body */}
         <div className="p-6">
           {activeTab === 'details' && (
             <div className="space-y-6">
-              {/* Status Cards */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <p className="text-xs text-gray-500 mb-1">Invoice Status</p>
@@ -633,107 +823,37 @@ const InvoiceDetailsModal = ({ isOpen, onClose, invoice, onMarkPaid, onPDF, onSe
                 </div>
               </div>
 
-              {/* Customer Info */}
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h3 className="font-medium mb-3 flex items-center">
                   <Building className="h-4 w-4 mr-2 text-[#E67E22]" />
                   Customer Information
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-gray-500">Company</p>
-                    <p className="font-medium">{invoice.customerInfo?.companyName || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Contact Person</p>
-                    <p>{invoice.customerInfo?.contactPerson || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Email</p>
-                    <p>{invoice.customerInfo?.email || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Phone</p>
-                    <p>{invoice.customerInfo?.phone || 'N/A'}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-xs text-gray-500">Address</p>
-                    <p>{invoice.customerInfo?.address || 'N/A'}</p>
-                  </div>
-                  {invoice.customerInfo?.vatNumber && (
-                    <div>
-                      <p className="text-xs text-gray-500">VAT Number</p>
-                      <p>{invoice.customerInfo.vatNumber}</p>
-                    </div>
-                  )}
+                  <div><p className="text-xs text-gray-500">Company</p><p className="font-medium">{invoice.customerInfo?.companyName || 'N/A'}</p></div>
+                  <div><p className="text-xs text-gray-500">Contact Person</p><p>{invoice.customerInfo?.contactPerson || 'N/A'}</p></div>
+                  <div><p className="text-xs text-gray-500">Email</p><p>{invoice.customerInfo?.email || 'N/A'}</p></div>
+                  <div><p className="text-xs text-gray-500">Phone</p><p>{invoice.customerInfo?.phone || 'N/A'}</p></div>
+                  <div className="col-span-2"><p className="text-xs text-gray-500">Address</p><p>{invoice.customerInfo?.address || 'N/A'}</p></div>
                 </div>
               </div>
 
-              {/* Invoice Details */}
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h3 className="font-medium mb-3 flex items-center">
                   <FileText className="h-4 w-4 mr-2 text-[#E67E22]" />
                   Invoice Details
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-gray-500">Invoice Date</p>
-                    <p>{formatDate(invoice.invoiceDate, 'long')}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Due Date</p>
-                    <p className={new Date(invoice.dueDate) < new Date() && invoice.paymentStatus !== 'paid' ? 'text-red-600 font-medium' : ''}>
-                      {formatDate(invoice.dueDate, 'long')}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Currency</p>
-                    <p>{invoice.currency}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Payment Terms</p>
-                    <p>{invoice.paymentTerms || 'Due within 30 days'}</p>
-                  </div>
+                  <div><p className="text-xs text-gray-500">Invoice Date</p><p>{formatDate(invoice.invoiceDate, 'long')}</p></div>
+                  <div><p className="text-xs text-gray-500">Due Date</p><p className={new Date(invoice.dueDate) < new Date() && invoice.paymentStatus !== 'paid' ? 'text-red-600 font-medium' : ''}>{formatDate(invoice.dueDate, 'long')}</p></div>
+                  <div><p className="text-xs text-gray-500">Currency</p><p>{invoice.currency}</p></div>
+                  <div><p className="text-xs text-gray-500">Payment Terms</p><p>{invoice.paymentTerms || 'Due within 30 days'}</p></div>
                 </div>
               </div>
 
-              {/* References */}
-              {(invoice.bookingId || invoice.shipmentId) && (
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h3 className="font-medium mb-3 flex items-center">
-                    <Package className="h-4 w-4 mr-2 text-[#E67E22]" />
-                    References
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    {invoice.bookingId && (
-                      <div>
-                        <p className="text-xs text-gray-500">Booking</p>
-                        <p>{invoice.bookingId.bookingNumber || invoice.bookingId}</p>
-                      </div>
-                    )}
-                    {invoice.shipmentId && (
-                      <div>
-                        <p className="text-xs text-gray-500">Shipment</p>
-                        <p>{invoice.shipmentId.trackingNumber || invoice.shipmentId}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Notes */}
               {invoice.notes && (
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <h3 className="font-medium mb-2">Notes</h3>
                   <p className="text-sm text-gray-600">{invoice.notes}</p>
-                </div>
-              )}
-
-              {/* Terms */}
-              {invoice.termsAndConditions && (
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h3 className="font-medium mb-2">Terms & Conditions</h3>
-                  <p className="text-sm text-gray-600">{invoice.termsAndConditions}</p>
                 </div>
               )}
             </div>
@@ -741,57 +861,29 @@ const InvoiceDetailsModal = ({ isOpen, onClose, invoice, onMarkPaid, onPDF, onSe
 
           {activeTab === 'charges' && (
             <div className="space-y-6">
-              {/* Charges Table */}
               <div className="border rounded-lg overflow-hidden">
                 <table className="w-full">
                   <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Description</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Type</th>
-                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Amount</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Notes</th>
-                    </tr>
+                    <tr><th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Description</th><th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Type</th><th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Amount</th><th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Notes</th></tr>
                   </thead>
                   <tbody className="divide-y">
                     {invoice.charges?.map((charge, idx) => (
                       <tr key={idx}>
                         <td className="px-4 py-2 text-sm">{charge.description}</td>
                         <td className="px-4 py-2 text-sm">{charge.type}</td>
-                        <td className="px-4 py-2 text-sm text-right font-medium">
-                          {formatCurrency(charge.amount, charge.currency)}
-                        </td>
+                        <td className="px-4 py-2 text-sm text-right font-medium">{formatCurrency(charge.amount, charge.currency)}</td>
                         <td className="px-4 py-2 text-sm text-gray-500">{charge.notes || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-
-              {/* Totals */}
               <div className="flex justify-end">
                 <div className="w-64 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Subtotal:</span>
-                    <span>{formatCurrency(invoice.subtotal, invoice.currency)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Tax ({invoice.taxRate}%):</span>
-                    <span>{formatCurrency(invoice.taxAmount, invoice.currency)}</span>
-                  </div>
-                  {invoice.discountAmount > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Discount:</span>
-                      <span className="text-red-600">-{formatCurrency(invoice.discountAmount, invoice.currency)}</span>
-                    </div>
-                  )}
-                  <div className="border-t pt-2">
-                    <div className="flex justify-between font-bold">
-                      <span>Total:</span>
-                      <span className="text-lg text-[#E67E22]">
-                        {formatCurrency(invoice.totalAmount, invoice.currency)}
-                      </span>
-                    </div>
-                  </div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-600">Subtotal:</span><span>{formatCurrency(invoice.subtotal, invoice.currency)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-600">Tax ({invoice.taxRate}%):</span><span>{formatCurrency(invoice.taxAmount, invoice.currency)}</span></div>
+                  {invoice.discountAmount > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Discount:</span><span className="text-red-600">-{formatCurrency(invoice.discountAmount, invoice.currency)}</span></div>}
+                  <div className="border-t pt-2"><div className="flex justify-between font-bold"><span>Total:</span><span className="text-lg text-[#E67E22]">{formatCurrency(invoice.totalAmount, invoice.currency)}</span></div></div>
                 </div>
               </div>
             </div>
@@ -800,82 +892,23 @@ const InvoiceDetailsModal = ({ isOpen, onClose, invoice, onMarkPaid, onPDF, onSe
           {activeTab === 'history' && (
             <div className="space-y-4">
               <div className="bg-gray-50 p-4 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">Created</span>
-                  <span className="text-xs text-gray-500">{formatDateTime(invoice.createdAt)}</span>
-                </div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">Last Updated</span>
-                  <span className="text-xs text-gray-500">{formatDateTime(invoice.updatedAt)}</span>
-                </div>
-                {invoice.emailSent && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Email Sent</span>
-                    <span className="text-xs text-gray-500">{formatDateTime(invoice.emailSentAt)}</span>
-                  </div>
-                )}
-                {invoice.paymentDate && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Payment Date</span>
-                    <span className="text-xs text-gray-500">{formatDateTime(invoice.paymentDate)}</span>
-                  </div>
-                )}
+                <div className="flex items-center justify-between mb-2"><span className="text-sm font-medium">Created</span><span className="text-xs text-gray-500">{formatDateTime(invoice.createdAt)}</span></div>
+                <div className="flex items-center justify-between mb-2"><span className="text-sm font-medium">Last Updated</span><span className="text-xs text-gray-500">{formatDateTime(invoice.updatedAt)}</span></div>
+                {invoice.emailSent && <div className="flex items-center justify-between"><span className="text-sm font-medium">Email Sent</span><span className="text-xs text-gray-500">{formatDateTime(invoice.emailSentAt)}</span></div>}
+                {invoice.paymentDate && <div className="flex items-center justify-between"><span className="text-sm font-medium">Payment Date</span><span className="text-xs text-gray-500">{formatDateTime(invoice.paymentDate)}</span></div>}
               </div>
             </div>
           )}
         </div>
 
-        {/* Footer */}
         <div className="sticky bottom-0 bg-white border-t p-6">
           <div className="flex justify-between">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-            >
-              Close
-            </button>
+            <button onClick={onClose} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Close</button>
             <div className="flex space-x-2">
-              {canEditInvoice(invoice.status) && (
-                <button
-                  onClick={() => {
-                    onClose();
-                    onEdit(invoice);
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit Invoice
-                </button>
-              )}
-              {canMarkAsPaid(invoice.paymentStatus) && (
-                <button
-                  onClick={() => {
-                    onClose();
-                    onMarkPaid(invoice);
-                  }}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center"
-                >
-                  <CreditCard className="h-4 w-4 mr-2" />
-                  Mark as Paid
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  onClose();
-                  onSendEmail(invoice);
-                }}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
-              >
-                <Mail className="h-4 w-4 mr-2" />
-                Send Email
-              </button>
-              <button
-                onClick={() => onPDF(invoice._id)}
-                className="px-4 py-2 bg-[#E67E22] text-white rounded-lg hover:bg-[#d35400] flex items-center"
-              >
-                <FileText className="h-4 w-4 mr-2" />
-                Download PDF
-              </button>
+              {canEditInvoice(invoice.status) && <button onClick={() => { onClose(); onEdit(invoice); }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"><Edit className="h-4 w-4 mr-2" />Edit Invoice</button>}
+              {canMarkAsPaid(invoice.paymentStatus) && <button onClick={() => { onClose(); onMarkPaid(invoice); }} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center"><CreditCard className="h-4 w-4 mr-2" />Mark as Paid</button>}
+              <button onClick={() => { onClose(); onSendEmail(invoice); }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"><Mail className="h-4 w-4 mr-2" />Send Email</button>
+              <button onClick={() => onPDF(invoice._id)} className="px-4 py-2 bg-[#E67E22] text-white rounded-lg hover:bg-[#d35400] flex items-center"><FileText className="h-4 w-4 mr-2" />Download PDF</button>
             </div>
           </div>
         </div>
@@ -928,91 +961,33 @@ const PaymentModal = ({ isOpen, onClose, invoice, onConfirm }) => {
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold">Mark Invoice as Paid</h2>
-            <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
-              <X className="h-5 w-5" />
-            </button>
+            <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X className="h-5 w-5" /></button>
           </div>
-
           <div className="space-y-4">
-            {/* Invoice Info */}
             <div className="bg-gray-50 p-3 rounded-lg">
               <p className="text-xs text-gray-500">Invoice</p>
               <p className="font-medium">{invoice.invoiceNumber}</p>
-              <p className="text-sm text-[#E67E22] font-bold mt-1">
-                {formatCurrency(invoice.totalAmount, invoice.currency)}
-              </p>
+              <p className="text-sm text-[#E67E22] font-bold mt-1">{formatCurrency(invoice.totalAmount, invoice.currency)}</p>
             </div>
-
-            {/* Payment Method */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Payment Method <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={paymentData.paymentMethod}
-                onChange={(e) => setPaymentData({ ...paymentData, paymentMethod: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-              >
-                {PAYMENT_METHODS.map(method => (
-                  <option key={method.value} value={method.value}>
-                    {method.icon} {method.label}
-                  </option>
-                ))}
+              <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method <span className="text-red-500">*</span></label>
+              <select value={paymentData.paymentMethod} onChange={(e) => setPaymentData({ ...paymentData, paymentMethod: e.target.value })} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]">
+                {PAYMENT_METHODS.map(method => (<option key={method.value} value={method.value}>{method.icon} {method.label}</option>))}
               </select>
             </div>
-
-            {/* Payment Reference */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Payment Reference
-              </label>
-              <input
-                type="text"
-                value={paymentData.paymentReference}
-                onChange={(e) => setPaymentData({ ...paymentData, paymentReference: e.target.value })}
-                placeholder="Transaction ID / Reference"
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Payment Reference</label>
+              <input type="text" value={paymentData.paymentReference} onChange={(e) => setPaymentData({ ...paymentData, paymentReference: e.target.value })} placeholder="Transaction ID / Reference" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]" />
             </div>
-
-            {/* Payment Date */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Payment Date
-              </label>
-              <input
-                type="date"
-                value={paymentData.paymentDate}
-                onChange={(e) => setPaymentData({ ...paymentData, paymentDate: e.target.value })}
-                max={new Date().toISOString().split('T')[0]}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Payment Date</label>
+              <input type="date" value={paymentData.paymentDate} onChange={(e) => setPaymentData({ ...paymentData, paymentDate: e.target.value })} max={new Date().toISOString().split('T')[0]} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]" />
             </div>
           </div>
-
           <div className="flex justify-end space-x-2 mt-6">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={loading}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 flex items-center"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Confirm Payment
-                </>
-              )}
+            <button onClick={onClose} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
+            <button onClick={handleSubmit} disabled={loading} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 flex items-center">
+              {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Processing...</> : <><CheckCircle className="h-4 w-4 mr-2" />Confirm Payment</>}
             </button>
           </div>
         </div>
@@ -1049,7 +1024,6 @@ const EmailModal = ({ isOpen, onClose, invoice, onSend }) => {
       toast.warning('Please enter recipient email');
       return;
     }
-
     setLoading(true);
     try {
       await onSend(invoice._id, emailData);
@@ -1067,90 +1041,18 @@ const EmailModal = ({ isOpen, onClose, invoice, onSend }) => {
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold">Send Invoice Email</h2>
-            <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
-              <X className="h-5 w-5" />
-            </button>
+            <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X className="h-5 w-5" /></button>
           </div>
-
           <div className="space-y-4">
-            {/* To */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                To <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="email"
-                value={emailData.to}
-                onChange={(e) => setEmailData({ ...emailData, to: e.target.value })}
-                placeholder="customer@example.com"
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-              />
-            </div>
-
-            {/* Subject */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Subject
-              </label>
-              <input
-                type="text"
-                value={emailData.subject}
-                onChange={(e) => setEmailData({ ...emailData, subject: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-              />
-            </div>
-
-            {/* Message */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Message
-              </label>
-              <textarea
-                value={emailData.message}
-                onChange={(e) => setEmailData({ ...emailData, message: e.target.value })}
-                rows="5"
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-              />
-            </div>
-
-            {/* Include PDF */}
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                id="includePdf"
-                checked={emailData.includePdf}
-                onChange={(e) => setEmailData({ ...emailData, includePdf: e.target.checked })}
-                className="rounded border-gray-300 text-[#E67E22] focus:ring-[#E67E22]"
-              />
-              <label htmlFor="includePdf" className="ml-2 text-sm text-gray-700">
-                Attach PDF invoice
-              </label>
-            </div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">To <span className="text-red-500">*</span></label><input type="email" value={emailData.to} onChange={(e) => setEmailData({ ...emailData, to: e.target.value })} placeholder="customer@example.com" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]" /></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Subject</label><input type="text" value={emailData.subject} onChange={(e) => setEmailData({ ...emailData, subject: e.target.value })} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]" /></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Message</label><textarea value={emailData.message} onChange={(e) => setEmailData({ ...emailData, message: e.target.value })} rows="5" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]" /></div>
+            <div className="flex items-center"><input type="checkbox" id="includePdf" checked={emailData.includePdf} onChange={(e) => setEmailData({ ...emailData, includePdf: e.target.checked })} className="rounded border-gray-300 text-[#E67E22] focus:ring-[#E67E22]" /><label htmlFor="includePdf" className="ml-2 text-sm text-gray-700">Attach PDF invoice</label></div>
           </div>
-
           <div className="flex justify-end space-x-2 mt-6">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={loading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 flex items-center"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Sending...
-                </>
-              ) : (
-                <>
-                  <Send className="h-4 w-4 mr-2" />
-                  Send Email
-                </>
-              )}
+            <button onClick={onClose} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
+            <button onClick={handleSubmit} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 flex items-center">
+              {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Sending...</> : <><Send className="h-4 w-4 mr-2" />Send Email</>}
             </button>
           </div>
         </div>
@@ -1189,8 +1091,6 @@ const EditInvoiceModal = ({ isOpen, onClose, invoice, onSave }) => {
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      // Call your update API here
-      // await updateInvoice(invoice._id, formData);
       toast.success('Invoice updated successfully');
       onClose();
     } catch (error) {
@@ -1206,172 +1106,17 @@ const EditInvoiceModal = ({ isOpen, onClose, invoice, onSave }) => {
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold">Edit Invoice</h2>
-            <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
-              <X className="h-5 w-5" />
-            </button>
+            <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X className="h-5 w-5" /></button>
           </div>
-
           <div className="space-y-4">
-            {/* Invoice Number */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Invoice Number
-              </label>
-              <input
-                type="text"
-                value={formData.invoiceNumber}
-                onChange={(e) => setFormData({ ...formData, invoiceNumber: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-              />
-            </div>
-
-            {/* Dates */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Invoice Date
-                </label>
-                <input
-                  type="date"
-                  value={formData.invoiceDate}
-                  onChange={(e) => setFormData({ ...formData, invoiceDate: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Due Date
-                </label>
-                <input
-                  type="date"
-                  value={formData.dueDate}
-                  onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-                />
-              </div>
-            </div>
-
-            {/* Currency */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Currency
-              </label>
-              <select
-                value={formData.currency}
-                onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-              >
-                {CURRENCIES.map(currency => (
-                  <option key={currency.value} value={currency.value}>
-                    {currency.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Customer Information */}
-            <div className="border-t pt-4">
-              <h3 className="font-medium mb-3">Customer Information</h3>
-              <div className="space-y-3">
-                <input
-                  type="text"
-                  placeholder="Company Name"
-                  value={formData.customerInfo?.companyName}
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    customerInfo: { ...formData.customerInfo, companyName: e.target.value }
-                  })}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-                />
-                <input
-                  type="text"
-                  placeholder="Contact Person"
-                  value={formData.customerInfo?.contactPerson}
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    customerInfo: { ...formData.customerInfo, contactPerson: e.target.value }
-                  })}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-                />
-                <input
-                  type="email"
-                  placeholder="Email"
-                  value={formData.customerInfo?.email}
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    customerInfo: { ...formData.customerInfo, email: e.target.value }
-                  })}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-                />
-                <input
-                  type="tel"
-                  placeholder="Phone"
-                  value={formData.customerInfo?.phone}
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    customerInfo: { ...formData.customerInfo, phone: e.target.value }
-                  })}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-                />
-                <textarea
-                  placeholder="Address"
-                  value={formData.customerInfo?.address}
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    customerInfo: { ...formData.customerInfo, address: e.target.value }
-                  })}
-                  rows="2"
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-                />
-              </div>
-            </div>
-
-            {/* Notes */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Notes
-              </label>
-              <textarea
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                rows="3"
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-              />
-            </div>
-
-            {/* Terms */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Terms & Conditions
-              </label>
-              <textarea
-                value={formData.termsAndConditions}
-                onChange={(e) => setFormData({ ...formData, termsAndConditions: e.target.value })}
-                rows="3"
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
-              />
-            </div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Invoice Number</label><input type="text" value={formData.invoiceNumber} onChange={(e) => setFormData({ ...formData, invoiceNumber: e.target.value })} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]" /></div>
+            <div className="grid grid-cols-2 gap-3"><div><label className="block text-sm font-medium text-gray-700 mb-1">Invoice Date</label><input type="date" value={formData.invoiceDate} onChange={(e) => setFormData({ ...formData, invoiceDate: e.target.value })} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]" /></div><div><label className="block text-sm font-medium text-gray-700 mb-1">Due Date</label><input type="date" value={formData.dueDate} onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]" /></div></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Currency</label><select value={formData.currency} onChange={(e) => setFormData({ ...formData, currency: e.target.value })} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]">{CURRENCIES.map(currency => (<option key={currency.value} value={currency.value}>{currency.label}</option>))}</select></div>
+            <div className="border-t pt-4"><h3 className="font-medium mb-3">Customer Information</h3><div className="space-y-3"><input type="text" placeholder="Company Name" value={formData.customerInfo?.companyName} onChange={(e) => setFormData({ ...formData, customerInfo: { ...formData.customerInfo, companyName: e.target.value } })} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]" /><input type="text" placeholder="Contact Person" value={formData.customerInfo?.contactPerson} onChange={(e) => setFormData({ ...formData, customerInfo: { ...formData.customerInfo, contactPerson: e.target.value } })} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]" /><input type="email" placeholder="Email" value={formData.customerInfo?.email} onChange={(e) => setFormData({ ...formData, customerInfo: { ...formData.customerInfo, email: e.target.value } })} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]" /><input type="tel" placeholder="Phone" value={formData.customerInfo?.phone} onChange={(e) => setFormData({ ...formData, customerInfo: { ...formData.customerInfo, phone: e.target.value } })} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]" /><textarea placeholder="Address" value={formData.customerInfo?.address} onChange={(e) => setFormData({ ...formData, customerInfo: { ...formData.customerInfo, address: e.target.value } })} rows="2" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]" /></div></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Notes</label><textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} rows="3" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]" /></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Terms & Conditions</label><textarea value={formData.termsAndConditions} onChange={(e) => setFormData({ ...formData, termsAndConditions: e.target.value })} rows="3" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]" /></div>
           </div>
-
-          <div className="flex justify-end space-x-2 mt-6">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={loading}
-              className="px-4 py-2 bg-[#E67E22] text-white rounded-lg hover:bg-[#d35400] disabled:bg-gray-300 flex items-center"
-            >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                'Save Changes'
-              )}
-            </button>
-          </div>
+          <div className="flex justify-end space-x-2 mt-6"><button onClick={onClose} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button><button onClick={handleSubmit} disabled={loading} className="px-4 py-2 bg-[#E67E22] text-white rounded-lg hover:bg-[#d35400] disabled:bg-gray-300 flex items-center">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Changes'}</button></div>
         </div>
       </div>
     </div>
@@ -1400,35 +1145,11 @@ const DeleteModal = ({ isOpen, onClose, onConfirm, invoice }) => {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl max-w-md w-full p-6">
         <div className="text-center">
-          <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
-            <AlertTriangle className="h-6 w-6 text-red-600" />
-          </div>
+          <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4"><AlertTriangle className="h-6 w-6 text-red-600" /></div>
           <h2 className="text-lg font-bold mb-2">Delete Invoice</h2>
-          <p className="text-sm text-gray-500 mb-4">
-            Are you sure you want to delete invoice <span className="font-medium text-gray-700">{invoice.invoiceNumber}</span>? 
-            This action cannot be undone.
-          </p>
+          <p className="text-sm text-gray-500 mb-4">Are you sure you want to delete invoice <span className="font-medium text-gray-700">{invoice.invoiceNumber}</span>? This action cannot be undone.</p>
         </div>
-
-        <div className="flex justify-end space-x-2">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={loading}
-            className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 flex items-center justify-center"
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              'Delete'
-            )}
-          </button>
-        </div>
+        <div className="flex justify-end space-x-2"><button onClick={onClose} className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button><button onClick={handleDelete} disabled={loading} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 flex items-center justify-center">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete'}</button></div>
       </div>
     </div>
   );
@@ -1446,114 +1167,26 @@ const BulkActionsModal = ({ isOpen, onClose, selectedCount, onConfirm }) => {
     setLoading(true);
     try {
       const updateData = {};
-      
-      if (action === 'mark-paid') {
-        updateData.paymentStatus = 'paid';
-        updateData.status = 'paid';
-        updateData.paymentMethod = paymentMethod;
-        updateData.paymentDate = new Date();
-      } else if (action === 'mark-sent') {
-        updateData.status = 'sent';
-        updateData.emailSent = true;
-        updateData.emailSentAt = new Date();
-      } else if (action === 'mark-overdue') {
-        updateData.status = 'overdue';
-        updateData.paymentStatus = 'overdue';
-      }
-
+      if (action === 'mark-paid') { updateData.paymentStatus = 'paid'; updateData.status = 'paid'; updateData.paymentMethod = paymentMethod; updateData.paymentDate = new Date(); }
+      else if (action === 'mark-sent') { updateData.status = 'sent'; updateData.emailSent = true; updateData.emailSentAt = new Date(); }
+      else if (action === 'mark-overdue') { updateData.status = 'overdue'; updateData.paymentStatus = 'overdue'; }
       await onConfirm(updateData);
       onClose();
-    } catch (error) {
-      toast.error('Bulk action failed');
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) { toast.error('Bulk action failed'); } finally { setLoading(false); }
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl max-w-md w-full p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold">Bulk Actions</h2>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <p className="text-sm text-gray-600 mb-4">
-          {selectedCount} invoice(s) selected
-        </p>
-
+        <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold">Bulk Actions</h2><button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X className="h-5 w-5" /></button></div>
+        <p className="text-sm text-gray-600 mb-4">{selectedCount} invoice(s) selected</p>
         <div className="space-y-3">
-          <label className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50">
-            <input
-              type="radio"
-              value="mark-paid"
-              checked={action === 'mark-paid'}
-              onChange={(e) => setAction(e.target.value)}
-              className="text-[#E67E22] focus:ring-[#E67E22]"
-            />
-            <span className="text-sm font-medium">Mark as Paid</span>
-          </label>
-
-          {action === 'mark-paid' && (
-            <div className="ml-8 p-3 bg-gray-50 rounded-lg">
-              <select
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
-              >
-                {PAYMENT_METHODS.map(method => (
-                  <option key={method.value} value={method.value}>
-                    {method.icon} {method.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <label className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50">
-            <input
-              type="radio"
-              value="mark-sent"
-              checked={action === 'mark-sent'}
-              onChange={(e) => setAction(e.target.value)}
-              className="text-[#E67E22] focus:ring-[#E67E22]"
-            />
-            <span className="text-sm font-medium">Mark as Sent</span>
-          </label>
-
-          <label className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50">
-            <input
-              type="radio"
-              value="mark-overdue"
-              checked={action === 'mark-overdue'}
-              onChange={(e) => setAction(e.target.value)}
-              className="text-[#E67E22] focus:ring-[#E67E22]"
-            />
-            <span className="text-sm font-medium">Mark as Overdue</span>
-          </label>
+          <label className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50"><input type="radio" value="mark-paid" checked={action === 'mark-paid'} onChange={(e) => setAction(e.target.value)} className="text-[#E67E22] focus:ring-[#E67E22]" /><span className="text-sm font-medium">Mark as Paid</span></label>
+          {action === 'mark-paid' && (<div className="ml-8 p-3 bg-gray-50 rounded-lg"><select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm">{PAYMENT_METHODS.map(method => (<option key={method.value} value={method.value}>{method.icon} {method.label}</option>))}</select></div>)}
+          <label className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50"><input type="radio" value="mark-sent" checked={action === 'mark-sent'} onChange={(e) => setAction(e.target.value)} className="text-[#E67E22] focus:ring-[#E67E22]" /><span className="text-sm font-medium">Mark as Sent</span></label>
+          <label className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50"><input type="radio" value="mark-overdue" checked={action === 'mark-overdue'} onChange={(e) => setAction(e.target.value)} className="text-[#E67E22] focus:ring-[#E67E22]" /><span className="text-sm font-medium">Mark as Overdue</span></label>
         </div>
-
-        <div className="flex justify-end space-x-2 mt-6">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="px-4 py-2 bg-[#E67E22] text-white rounded-lg hover:bg-[#d35400] disabled:bg-gray-300 flex items-center"
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              'Apply'
-            )}
-          </button>
-        </div>
+        <div className="flex justify-end space-x-2 mt-6"><button onClick={onClose} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button><button onClick={handleSubmit} disabled={loading} className="px-4 py-2 bg-[#E67E22] text-white rounded-lg hover:bg-[#d35400] disabled:bg-gray-300 flex items-center">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}</button></div>
       </div>
     </div>
   );
@@ -1562,29 +1195,10 @@ const BulkActionsModal = ({ isOpen, onClose, selectedCount, onConfirm }) => {
 // Empty State
 const EmptyState = ({ onRefresh }) => (
   <div className="text-center py-16 bg-white rounded-xl border">
-    <div className="bg-orange-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-      <Receipt className="h-10 w-10 text-[#E67E22]" />
-    </div>
+    <div className="bg-orange-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4"><Receipt className="h-10 w-10 text-[#E67E22]" /></div>
     <h3 className="text-lg font-medium text-gray-900 mb-2">No invoices found</h3>
-    <p className="text-sm text-gray-500 mb-6 max-w-md mx-auto">
-      Create your first invoice to get started with billing and payment tracking.
-    </p>
-    <div className="flex items-center justify-center space-x-3">
-      <Link
-        href="/admin/invoices/create"
-        className="inline-flex items-center px-4 py-2 bg-[#E67E22] text-white rounded-lg hover:bg-[#d35400]"
-      >
-        <PlusCircle className="h-4 w-4 mr-2" />
-        Create Invoice
-      </Link>
-      <button
-        onClick={onRefresh}
-        className="inline-flex items-center px-4 py-2 border rounded-lg hover:bg-gray-50"
-      >
-        <RefreshCw className="h-4 w-4 mr-2" />
-        Refresh
-      </button>
-    </div>
+    <p className="text-sm text-gray-500 mb-6 max-w-md mx-auto">Create your first invoice to get started with billing and payment tracking.</p>
+    <div className="flex items-center justify-center space-x-3"><Link href="/admin/invoices/create" className="inline-flex items-center px-4 py-2 bg-[#E67E22] text-white rounded-lg hover:bg-[#d35400]"><PlusCircle className="h-4 w-4 mr-2" />Create Invoice</Link><button onClick={onRefresh} className="inline-flex items-center px-4 py-2 border rounded-lg hover:bg-gray-50"><RefreshCw className="h-4 w-4 mr-2" />Refresh</button></div>
   </div>
 );
 
@@ -1612,7 +1226,8 @@ export default function InvoicesPage() {
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
-  const [viewMode, setViewMode] = useState('table'); // 'table' or 'card'
+  const [viewMode, setViewMode] = useState('table');
+  const [pdfDownloading, setPdfDownloading] = useState(false);
 
   // Custom hooks
   const {
@@ -1731,30 +1346,32 @@ export default function InvoicesPage() {
     }
   };
 
-  const handleGeneratePDF = async (invoiceId) => {
+  // NEW: PDF Download Handler using React PDF
+  const handlePDFDownload = async (invoiceId) => {
+    setPdfDownloading(true);
+    const toastId = toast.loading('Generating PDF...');
+    
     try {
-      // Try to download using the download function first
-      const downloadResult = await downloadInvoicePDF(invoiceId);
-      if (downloadResult && downloadResult.success) {
-        toast.success('PDF downloaded successfully');
-        return;
-      }
-
-      // If download fails, try generatePDF
-      const result = await generatePDF(invoiceId);
-      if (result && result.success) {
-        if (result.data && result.data.pdfUrl) {
-          window.open(result.data.pdfUrl, '_blank');
-          toast.success('PDF generated successfully');
+      // First fetch the full invoice data
+      const result = await fetchInvoice(invoiceId);
+      if (result.success && result.data) {
+        const pdfResult = await generateAndDownloadSinglePDF(result.data);
+        toast.dismiss(toastId);
+        if (pdfResult.success) {
+          toast.success(pdfResult.message);
         } else {
-          toast.error('PDF generated but no URL returned');
+          toast.error(pdfResult.message);
         }
       } else {
-        toast.error(result?.message || 'Failed to generate PDF');
+        toast.dismiss(toastId);
+        toast.error('Failed to fetch invoice data');
       }
     } catch (error) {
+      toast.dismiss(toastId);
       console.error('PDF generation error:', error);
       toast.error('Failed to generate PDF');
+    } finally {
+      setPdfDownloading(false);
     }
   };
 
@@ -1776,31 +1393,8 @@ export default function InvoicesPage() {
   };
 
   const handleExportCSV = () => {
-    // CSV export logic
-    const headers = [
-      'Invoice Number',
-      'Customer',
-      'Date',
-      'Due Date',
-      'Subtotal',
-      'Tax',
-      'Total',
-      'Status',
-      'Payment Status'
-    ].join(',');
-    
-    const rows = invoices.map(inv => [
-      inv.invoiceNumber,
-      inv.customerInfo?.companyName || 'N/A',
-      formatDate(inv.invoiceDate, 'short'),
-      formatDate(inv.dueDate, 'short'),
-      inv.subtotal || 0,
-      inv.taxAmount || 0,
-      inv.totalAmount || 0,
-      inv.status,
-      inv.paymentStatus
-    ].join(',')).join('\n');
-    
+    const headers = ['Invoice Number', 'Customer', 'Date', 'Due Date', 'Subtotal', 'Tax', 'Total', 'Status', 'Payment Status'].join(',');
+    const rows = invoices.map(inv => [inv.invoiceNumber, inv.customerInfo?.companyName || 'N/A', formatDate(inv.invoiceDate, 'short'), formatDate(inv.dueDate, 'short'), inv.subtotal || 0, inv.taxAmount || 0, inv.totalAmount || 0, inv.status, inv.paymentStatus].join(',')).join('\n');
     const csv = `${headers}\n${rows}`;
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -1808,7 +1402,6 @@ export default function InvoicesPage() {
     a.href = url;
     a.download = `invoices-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
-    
     toast.success('Invoices exported');
   };
 
@@ -1984,7 +1577,7 @@ export default function InvoicesPage() {
                             setSelectedInvoice(invoice);
                             setShowPaymentModal(true);
                           }}
-                          onPDF={handleGeneratePDF}
+                          onPDF={handlePDFDownload}
                           onSelect={handleSelectInvoice}
                           isSelected={selectedInvoices.includes(invoice._id)}
                         />
@@ -2012,7 +1605,7 @@ export default function InvoicesPage() {
                       setSelectedInvoice(invoice);
                       setShowPaymentModal(true);
                     }}
-                    onPDF={handleGeneratePDF}
+                    onPDF={handlePDFDownload}
                   />
                 ))}
               </div>
@@ -2059,7 +1652,7 @@ export default function InvoicesPage() {
           setShowPaymentModal(true);
         }}
         onEdit={handleEditInvoice}
-        onPDF={handleGeneratePDF}
+        onPDF={handlePDFDownload}
         onSendEmail={() => {
           setShowDetailsModal(false);
           setShowEmailModal(true);

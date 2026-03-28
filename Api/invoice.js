@@ -48,7 +48,7 @@ export const getAllInvoices = async (params = {}) => {
 // Endpoint: GET /api/invoices/:id
 export const getInvoiceById = async (invoiceId) => {
   try {
-    const response = await axiosInstance.get(`/invoices/${invoiceId}`);
+    const response = await axiosInstance.get(`/getInvoiceById/${invoiceId}`);
     
     if (response.data.success) {
       return {
