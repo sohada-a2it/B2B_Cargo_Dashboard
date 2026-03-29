@@ -1193,3 +1193,557 @@ export const markAsReadyForDispatch = async (id, consolidation) => {
     };
   }
 };
+// Api/consolidation.js - শুধুমাত্র নতুন ফাংশন (On Hold & Cancel)
+
+/**
+ * UPDATE SHIPMENT IN CONSOLIDATION (Individual Shipment On Hold / Cancel / Resume)
+ * API Endpoint: PATCH /api/v1/consolidations/:consolidationId/shipments/:shipmentId
+ */
+export const updateShipmentInConsolidation = async (consolidationId, shipmentId, updateData) => {
+  try {
+    console.log('📦 Updating shipment in consolidation:', { consolidationId, shipmentId, updateData });
+    
+    const response = await axiosInstance.patch(
+      `/consolidations/${consolidationId}/shipments/${shipmentId}`, 
+      updateData
+    );
+    
+    if (response.data.success) {
+      console.log('✅ Shipment updated in consolidation:', response.data.data);
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    }
+    
+    throw new Error(response.data.message || 'Failed to update shipment in consolidation');
+    
+  } catch (error) {
+    console.error('❌ Update shipment in consolidation error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || 'Failed to update shipment',
+      error: error.response?.data
+    };
+  }
+};
+
+/**
+ * GET ON HOLD SHIPMENTS IN CONSOLIDATION
+ * API Endpoint: GET /api/v1/consolidations/:id/on-hold-shipments
+ */
+export const getOnHoldShipments = async (consolidationId) => {
+  try {
+    const response = await axiosInstance.get(`/consolidations/${consolidationId}/on-hold-shipments`);
+    
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    }
+    
+    throw new Error(response.data.message || 'Failed to fetch on hold shipments');
+    
+  } catch (error) {
+    console.error('❌ Get on hold shipments error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || 'Failed to fetch on hold shipments',
+      error: error.response?.data
+    };
+  }
+};
+
+/**
+ * RESUME ALL ON HOLD SHIPMENTS IN CONSOLIDATION
+ * API Endpoint: POST /api/v1/consolidations/:id/resume-all
+ */
+export const resumeAllOnHoldShipments = async (consolidationId, notes = '') => {
+  try {
+    const response = await axiosInstance.post(`/consolidations/${consolidationId}/resume-all`, { notes });
+    
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    }
+    
+    throw new Error(response.data.message || 'Failed to resume shipments');
+    
+  } catch (error) {
+    console.error('❌ Resume all shipments error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || 'Failed to resume shipments',
+      error: error.response?.data
+    };
+  }
+};
+
+/**
+ * GET CANCELLED SHIPMENTS FROM CONSOLIDATION
+ * API Endpoint: GET /api/v1/consolidations/:id/cancelled-shipments
+ */
+export const getCancelledShipmentsFromConsolidation = async (consolidationId) => {
+  try {
+    const response = await axiosInstance.get(`/consolidations/${consolidationId}/cancelled-shipments`);
+    
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    }
+    
+    throw new Error(response.data.message || 'Failed to fetch cancelled shipments');
+    
+  } catch (error) {
+    console.error('❌ Get cancelled shipments error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || 'Failed to fetch cancelled shipments',
+      error: error.response?.data
+    };
+  }
+};
+
+/**
+ * PUT CONSOLIDATION ON HOLD
+ * API Endpoint: PUT /api/v1/consolidations/:id/status (with status: 'on_hold')
+ */
+export const putConsolidationOnHold = async (consolidationId, notes = '') => {
+  try {
+    const response = await axiosInstance.put(`/consolidations/${consolidationId}/status`, {
+      status: 'on_hold',
+      notes: notes
+    });
+    
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    }
+    
+    throw new Error(response.data.message || 'Failed to put consolidation on hold');
+    
+  } catch (error) {
+    console.error('❌ Put consolidation on hold error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || 'Failed to put consolidation on hold',
+      error: error.response?.data
+    };
+  }
+};
+
+/**
+ * RESUME CONSOLIDATION FROM HOLD
+ * API Endpoint: PUT /api/v1/consolidations/:id/status (with status: 'in_progress')
+ */
+export const resumeConsolidationFromHold = async (consolidationId, notes = '') => {
+  try {
+    const response = await axiosInstance.put(`/consolidations/${consolidationId}/status`, {
+      status: 'in_progress',
+      notes: notes
+    });
+    
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    }
+    
+    throw new Error(response.data.message || 'Failed to resume consolidation');
+    
+  } catch (error) {
+    console.error('❌ Resume consolidation error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || 'Failed to resume consolidation',
+      error: error.response?.data
+    };
+  }
+};
+
+/**
+ * CANCEL CONSOLIDATION
+ * API Endpoint: PUT /api/v1/consolidations/:id/status (with status: 'cancelled')
+ */
+export const cancelConsolidation = async (consolidationId, reason = '') => {
+  try {
+    const response = await axiosInstance.put(`/consolidations/${consolidationId}/status`, {
+      status: 'cancelled',
+      notes: reason
+    });
+    
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    }
+    
+    throw new Error(response.data.message || 'Failed to cancel consolidation');
+    
+  } catch (error) {
+    console.error('❌ Cancel consolidation error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || 'Failed to cancel consolidation',
+      error: error.response?.data
+    };
+  }
+};
+
+/**
+ * UPDATE SHIPMENT STATUS (Individual)
+ * API Endpoint: PATCH /api/v1/shipments/:shipmentId/status
+ */
+export const updateShipmentStatus = async (shipmentId, statusData) => {
+  try {
+    const response = await axiosInstance.patch(`/shipments/${shipmentId}/status`, statusData);
+    
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    }
+    
+    throw new Error(response.data.message || 'Failed to update shipment status');
+    
+  } catch (error) {
+    console.error('❌ Update shipment status error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || 'Failed to update shipment status',
+      error: error.response?.data
+    };
+  }
+};
+
+/**
+ * PUT SHIPMENT ON HOLD (Individual)
+ */
+export const putShipmentOnHold = async (shipmentId, reason = '') => {
+  return updateShipmentStatus(shipmentId, {
+    status: 'on_hold',
+    holdReason: reason,
+    location: 'System'
+  });
+};
+
+/**
+ * CANCEL SHIPMENT (Individual)
+ */
+export const cancelShipment = async (shipmentId, reason = '') => {
+  return updateShipmentStatus(shipmentId, {
+    status: 'cancelled',
+    cancellationReason: reason,
+    location: 'System'
+  });
+};
+
+/**
+ * RESUME SHIPMENT FROM HOLD (Individual)
+ */
+export const resumeShipment = async (shipmentId, notes = '') => {
+  return updateShipmentStatus(shipmentId, {
+    status: 'in_progress',
+    notes: notes,
+    location: 'System'
+  });
+};
+
+/**
+ * GET ALL ON HOLD SHIPMENTS (Global)
+ * API Endpoint: GET /api/v1/shipments?status=on_hold
+ */
+export const getAllOnHoldShipments = async (params = {}) => {
+  try {
+    const queryParams = new URLSearchParams({
+      status: 'on_hold',
+      page: params.page || 1,
+      limit: params.limit || 50,
+      ...(params.search && { search: params.search })
+    });
+    
+    const response = await axiosInstance.get(`/shipments?${queryParams}`);
+    
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.data,
+        pagination: response.data.pagination,
+        summary: response.data.summary,
+        message: response.data.message
+      };
+    }
+    
+    throw new Error(response.data.message || 'Failed to fetch on hold shipments');
+    
+  } catch (error) {
+    console.error('❌ Get on hold shipments error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || 'Failed to fetch on hold shipments',
+      error: error.response?.data
+    };
+  }
+};
+
+/**
+ * GET ALL CANCELLED SHIPMENTS (Global)
+ * API Endpoint: GET /api/v1/shipments?status=cancelled
+ */
+export const getAllCancelledShipments = async (params = {}) => {
+  try {
+    const queryParams = new URLSearchParams({
+      status: 'cancelled',
+      page: params.page || 1,
+      limit: params.limit || 50,
+      ...(params.startDate && { startDate: params.startDate }),
+      ...(params.endDate && { endDate: params.endDate })
+    });
+    
+    const response = await axiosInstance.get(`/shipments?${queryParams}`);
+    
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.data,
+        pagination: response.data.pagination,
+        summary: response.data.summary,
+        message: response.data.message
+      };
+    }
+    
+    throw new Error(response.data.message || 'Failed to fetch cancelled shipments');
+    
+  } catch (error) {
+    console.error('❌ Get cancelled shipments error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || 'Failed to fetch cancelled shipments',
+      error: error.response?.data
+    };
+  }
+};
+
+/**
+ * RESTORE CANCELLED SHIPMENT
+ * API Endpoint: POST /api/v1/shipments/:shipmentId/restore
+ */
+export const restoreCancelledShipment = async (shipmentId, restoreData = {}) => {
+  try {
+    const response = await axiosInstance.post(`/shipments/${shipmentId}/restore`, {
+      ...restoreData,
+      restoredAt: new Date().toISOString()
+    });
+    
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    }
+    
+    throw new Error(response.data.message || 'Failed to restore shipment');
+    
+  } catch (error) {
+    console.error('❌ Restore shipment error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || 'Failed to restore shipment',
+      error: error.response?.data
+    };
+  }
+};
+
+/**
+ * BULK UPDATE SHIPMENT STATUS
+ * API Endpoint: PATCH /api/v1/shipments/bulk-status
+ */
+export const bulkUpdateShipmentStatus = async (shipmentIds, statusData) => {
+  try {
+    const response = await axiosInstance.patch('/shipments/bulk-status', {
+      shipmentIds,
+      ...statusData,
+      timestamp: new Date().toISOString()
+    });
+    
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    }
+    
+    throw new Error(response.data.message || 'Failed to bulk update shipments');
+    
+  } catch (error) {
+    console.error('❌ Bulk update error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || 'Failed to bulk update shipments',
+      error: error.response?.data
+    };
+  }
+};
+
+/**
+ * BULK PUT SHIPMENTS ON HOLD
+ */
+export const bulkPutShipmentsOnHold = async (shipmentIds, reason = '') => {
+  return bulkUpdateShipmentStatus(shipmentIds, {
+    status: 'on_hold',
+    holdReason: reason,
+    location: 'System'
+  });
+};
+
+/**
+ * BULK CANCEL SHIPMENTS
+ */
+export const bulkCancelShipments = async (shipmentIds, reason = '') => {
+  return bulkUpdateShipmentStatus(shipmentIds, {
+    status: 'cancelled',
+    cancellationReason: reason,
+    location: 'System'
+  });
+};
+
+/**
+ * GET SHIPMENT STATUS HISTORY
+ * API Endpoint: GET /api/v1/shipments/:shipmentId/history
+ */
+export const getShipmentStatusHistory = async (shipmentId) => {
+  try {
+    const response = await axiosInstance.get(`/shipments/${shipmentId}/history`);
+    
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    }
+    
+    throw new Error(response.data.message || 'Failed to fetch status history');
+    
+  } catch (error) {
+    console.error('❌ Get status history error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || 'Failed to fetch status history',
+      error: error.response?.data
+    };
+  }
+};
+
+// ==================== STATUS HELPER FUNCTIONS ====================
+
+/**
+ * Check if shipment can be put on hold
+ */
+export const canPutOnHold = (status) => {
+  const allowedStatuses = [
+    'pending',
+    'received_at_warehouse',
+    'consolidation_in_progress',
+    'ready_for_shipping',
+    'in_transit',
+    'arrived_at_destination',
+    'customs_clearance',
+    'out_for_delivery'
+  ];
+  return allowedStatuses.includes(status);
+};
+
+/**
+ * Check if shipment can be resumed from hold
+ */
+export const canResumeFromHold = (status) => {
+  return status === 'on_hold';
+};
+
+/**
+ * Check if shipment can be cancelled
+ */
+export const canCancel = (status) => {
+  const cannotCancelStatuses = ['delivered', 'completed', 'cancelled'];
+  return !cannotCancelStatuses.includes(status);
+};
+
+/**
+ * Get status action buttons visibility
+ */
+export const getShipmentActions = (status) => {
+  return {
+    canHold: canPutOnHold(status),
+    canResume: canResumeFromHold(status),
+    canCancel: canCancel(status),
+    canEdit: status !== 'cancelled' && status !== 'delivered' && status !== 'completed',
+    canDelete: status === 'pending' || status === 'draft'
+  };
+};
+
+/**
+ * Get status badge color for UI
+ */
+export const getStatusBadgeColor = (status) => {
+  const colors = {
+    'pending': 'bg-yellow-100 text-yellow-800',
+    'on_hold': 'bg-orange-100 text-orange-800',
+    'cancelled': 'bg-red-100 text-red-800',
+    'in_progress': 'bg-blue-100 text-blue-800',
+    'consolidated': 'bg-purple-100 text-purple-800',
+    'ready_for_dispatch': 'bg-indigo-100 text-indigo-800',
+    'dispatched': 'bg-amber-100 text-amber-800',
+    'in_transit': 'bg-cyan-100 text-cyan-800',
+    'arrived': 'bg-green-100 text-green-800',
+    'customs_cleared': 'bg-emerald-100 text-emerald-800',
+    'out_for_delivery': 'bg-sky-100 text-sky-800',
+    'delivered': 'bg-green-100 text-green-800',
+    'completed': 'bg-green-200 text-green-900'
+  };
+  
+  return colors[status] || 'bg-gray-100 text-gray-800';
+};
+
+/**
+ * Get status icon name
+ */
+export const getStatusIcon = (status) => {
+  const icons = {
+    'pending': 'Clock',
+    'on_hold': 'Pause',
+    'cancelled': 'Ban',
+    'in_progress': 'Play',
+    'consolidated': 'Package',
+    'ready_for_dispatch': 'Send',
+    'dispatched': 'Send',
+    'in_transit': 'Truck',
+    'arrived': 'CheckCircle',
+    'customs_cleared': 'Shield',
+    'out_for_delivery': 'Truck',
+    'delivered': 'CheckCircle',
+    'completed': 'Award'
+  };
+  
+  return icons[status] || 'Package';
+};

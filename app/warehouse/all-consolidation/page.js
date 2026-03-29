@@ -39,7 +39,8 @@ import {
   Move, MoveHorizontal, MoveVertical,
   ZoomIn, ZoomOut, Focus,
   Sunset, Sunrise, MoonStar,
-  Sparkle, PartyPopper, GiftIcon
+  Sparkle, PartyPopper, GiftIcon,
+  Building
 } from 'lucide-react';
 import { formatDate } from '@/Api/booking';
 import {
@@ -65,9 +66,16 @@ import {
   calculateTotalWeight,
   calculateTotalPackages,
   groupConsolidationsByStatus,
-  markAsReadyForDispatch
+  markAsReadyForDispatch,
+  updateShipmentInConsolidation,
+  getOnHoldShipments,
+  resumeAllOnHoldShipments,
+  getCancelledShipmentsFromConsolidation,
+  putConsolidationOnHold,
+  cancelConsolidation
 } from '@/Api/consolidation';
-
+import { progress } from 'framer-motion';
+import { trackByNumber } from '@/Api/booking';
 // ==================== CONSTANTS ====================
 
 const CONSOLIDATION_STATUSES = [
@@ -359,41 +367,443 @@ const ShipmentItemCard = ({ item }) => {
   );
 };
 
-// ==================== SHIPMENT CARD (for shipments array) ====================
+// ==================== SHIPMENT CARD (for shipments array) ====================   
 
-const ShipmentCard = ({ shipment }) => {
+// ShipmentCard component - Add tracking status fetch
+// warehouse/consolidations/index.js - ShipmentCard Component Full Version
+
+const ShipmentCard = ({ shipment, consolidationId, consolidationStatus, onShipmentUpdated }) => {
   const [expanded, setExpanded] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [showCancelReason, setShowCancelReason] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [trackingData, setTrackingData] = useState(null);
+  const [trackingLoading, setTrackingLoading] = useState(false);
+
+  // Auto-refresh when consolidation status changes
+  useEffect(() => {
+    console.log('🔄 Consolidation status changed, refreshing tracking:', consolidationStatus);
+    if (shipment?.trackingNumber) {
+      fetchTrackingStatus();
+    }
+  }, [consolidationStatus]);
+
+  // Auto-fetch tracking status on mount
+  useEffect(() => {
+    if (shipment?.trackingNumber) {
+      fetchTrackingStatus();
+    }
+  }, [shipment?.trackingNumber]);
+
+  // warehouse/consolidations/index.js - ShipmentCard-এর fetchTrackingStatus ফাংশন ঠিক করুন
+
+const fetchTrackingStatus = async () => {
+    if (!shipment?.trackingNumber) return;
+    
+    setTrackingLoading(true);
+    try {
+        console.log('📡 Fetching tracking for:', shipment.trackingNumber);
+        const result = await trackByNumber(shipment.trackingNumber);
+        console.log('📡 Tracking API Response:', result);
+        
+        if (result?.success && result?.data) {
+            // ✅ সঠিকভাবে data সেট করুন
+            setTrackingData({
+                trackingNumber: result.data.trackingNumber,
+                status: result.data.status,
+                currentStatus: {
+                    status: result.data.status,
+                    label: getStatusLabel(result.data.status),
+                    location: result.data.currentLocation || getLocationFromStatus(result.data.status),
+                    timestamp: result.data.lastUpdate || new Date().toISOString(),
+                    progress: result.data.progress || getProgressFromStatus(result.data.status)
+                },
+                estimatedDelivery: result.data.estimatedArrival,
+                location: result.data.currentLocation || getLocationFromStatus(result.data.status),
+                updatedAt: result.data.lastUpdate,
+                trackingHistory: result.data.timeline || shipment.milestones || []
+            });
+        } else {
+            // Fallback to shipment data
+            setTrackingData({
+                trackingNumber: shipment.trackingNumber,
+                status: shipment.status || 'pending',
+                currentStatus: {
+                    status: shipment.status || 'pending',
+                    label: getStatusLabel(shipment.status),
+                    location: getLocationFromStatus(shipment.status, shipment.currentLocation),
+                    timestamp: shipment.updatedAt || new Date().toISOString(),
+                    progress: getProgressFromStatus(shipment.status)
+                },
+                estimatedDelivery: shipment.estimatedArrivalDate,
+                location: getLocationFromStatus(shipment.status, shipment.currentLocation),
+                updatedAt: shipment.updatedAt,
+                trackingHistory: shipment.milestones || []
+            });
+        }
+    } catch (error) {
+        console.error('Tracking API error:', error);
+        setTrackingData({
+            trackingNumber: shipment.trackingNumber,
+            status: shipment.status || 'pending',
+            currentStatus: {
+                status: shipment.status || 'pending',
+                label: getStatusLabel(shipment.status),
+                location: getLocationFromStatus(shipment.status, shipment.currentLocation),
+                timestamp: shipment.updatedAt || new Date().toISOString(),
+                progress: getProgressFromStatus(shipment.status)
+            },
+            estimatedDelivery: shipment.estimatedArrivalDate,
+            location: getLocationFromStatus(shipment.status, shipment.currentLocation),
+            updatedAt: shipment.updatedAt,
+            trackingHistory: shipment.milestones || []
+        });
+    } finally {
+        setTrackingLoading(false);
+    }
+};
+
+  // Helper function to get status label
+  const getStatusLabel = (status) => {
+    const labels = {
+      'pending': 'Pending',
+      'in_progress': 'In Progress',
+      'picked_up_from_warehouse': 'Picked Up',
+      'departed_port_of_origin': 'Departed Origin',
+      'in_transit': 'In Transit',
+      'in_transit_sea_freight': 'In Transit (Sea)',
+      'arrived_at_destination_port': 'Arrived at Port',
+      'arrived': 'Arrived',
+      'customs_cleared': 'Customs Cleared',
+      'out_for_delivery': 'Out for Delivery',
+      'delivered': 'Delivered',
+      'completed': 'Completed',
+      'on_hold': 'On Hold',
+      'cancelled': 'Cancelled',
+      'returned': 'Returned',
+      'received_at_warehouse': 'At Warehouse',
+      'consolidated': 'Consolidated',
+      'ready_for_dispatch': 'Ready for Dispatch',
+      'loaded_in_container': 'Loaded',
+      'dispatched': 'Dispatched'
+    };
+    return labels[status] || status?.replace(/_/g, ' ') || 'Pending';
+  };
+
+  // Helper function to get location from status
+  const getLocationFromStatus = (status, currentLocation) => {
+    if (currentLocation) return currentLocation;
+    
+    const locations = {
+      'arrived_at_destination_port': 'Destination Port',
+      'arrived': 'Destination Port',
+      'customs_cleared': 'Customs',
+      'out_for_delivery': 'Out for Delivery',
+      'delivered': 'Delivered',
+      'completed': 'Completed',
+      'in_transit': 'In Transit',
+      'departed_port_of_origin': 'In Transit',
+      'picked_up_from_warehouse': 'Warehouse'
+    };
+    return locations[status] || 'Processing';
+  };
+
+  // Progress based on status
+ // warehouse/consolidations/index.js - getProgressFromStatus ফাংশন
+
+const getProgressFromStatus = (status) => {
+    const progressMap = {
+        'pending': 10,
+        'picked_up_from_warehouse': 20,
+        'received_at_warehouse': 25,
+        'pending_consolidation': 28,
+        'consolidating': 29,
+        'consolidated': 30,
+        'ready_for_dispatch': 35,
+        'loaded_in_container': 38,
+        'dispatched': 40,
+        'departed_port_of_origin': 45,
+        'in_transit': 50,
+        'in_transit_sea_freight': 50,
+        'arrived_at_destination_port': 70,
+        'arrived': 70,
+        'customs_cleared': 80,
+        'out_for_delivery': 90,
+        'delivered': 100,
+        'completed': 100,
+        'on_hold': 0,
+        'cancelled': 0
+    };
+    return progressMap[status] || 30;
+};
+
+  const getDisplayStatus = () => {
+    if (trackingLoading) {
+      return {
+        label: 'Loading...',
+        color: 'bg-gray-100 text-gray-600',
+        icon: Loader2,
+        progress: null,
+        iconClass: 'text-gray-500'
+      };
+    }
+    
+    if (trackingData) {
+      const status = trackingData.currentStatus?.status || trackingData.status || shipment.status;
+      const label = trackingData.currentStatus?.label || getStatusLabel(status);
+      const progress = trackingData.currentStatus?.progress || getProgressFromStatus(status);
+      const location = trackingData.currentStatus?.location || trackingData.location || getLocationFromStatus(status);
+      
+      const statusColors = {
+        'delivered': 'bg-green-100 text-green-700 border-green-200',
+        'completed': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+        'in_transit': 'bg-blue-100 text-blue-700 border-blue-200',
+        'in_transit_sea_freight': 'bg-blue-100 text-blue-700 border-blue-200',
+        'arrived_at_destination_port': 'bg-green-100 text-green-700 border-green-200',
+        'arrived': 'bg-green-100 text-green-700 border-green-200',
+        'customs_cleared': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+        'out_for_delivery': 'bg-sky-100 text-sky-700 border-sky-200',
+        'dispatched': 'bg-orange-100 text-orange-700 border-orange-200',
+        'pending': 'bg-yellow-100 text-yellow-700 border-yellow-200',
+        'on_hold': 'bg-orange-100 text-orange-700 border-orange-200',
+        'cancelled': 'bg-red-100 text-red-700 border-red-200',
+        'ready_for_dispatch': 'bg-purple-100 text-purple-700 border-purple-200',
+        'loaded_in_container': 'bg-indigo-100 text-indigo-700 border-indigo-200'
+      };
+      
+      const statusIcons = {
+        'delivered': CheckCircle,
+        'completed': Award,
+        'in_transit': Truck,
+        'in_transit_sea_freight': Ship,
+        'arrived_at_destination_port': Flag,
+        'arrived': Flag,
+        'customs_cleared': Shield,
+        'out_for_delivery': Truck,
+        'dispatched': Send,
+        'pending': Clock,
+        'on_hold': Pause,
+        'cancelled': Ban,
+        'ready_for_dispatch': Send,
+        'loaded_in_container': Package
+      };
+      
+      return {
+        label: label,
+        color: statusColors[status] || 'bg-gray-100 text-gray-700 border-gray-200',
+        icon: statusIcons[status] || Package,
+        progress: progress,
+        location: location,
+        status: status,
+        iconClass: 'text-current'
+      };
+    }
+    
+    // Fallback
+    const status = shipment.status || 'pending';
+    return {
+      label: getStatusLabel(status),
+      color: 'bg-gray-100 text-gray-700 border-gray-200',
+      icon: Package,
+      progress: getProgressFromStatus(status),
+      location: getLocationFromStatus(status, shipment.currentLocation),
+      status: status,
+      iconClass: 'text-gray-500'
+    };
+  };
+
+  const display = getDisplayStatus();
+  const StatusIcon = display.icon;
+  
+  const currentLocation = display.location;
+  const estimatedDelivery = trackingData?.estimatedDelivery || shipment.estimatedArrivalDate;
+  const lastUpdate = trackingData?.currentStatus?.timestamp || trackingData?.updatedAt || shipment.updatedAt;
+
+  // Check if shipment can be modified
+  const canModify = shipment.status !== 'delivered' && 
+                     shipment.status !== 'completed' && 
+                     shipment.status !== 'cancelled';
+
+  const handleOnHold = async () => {
+    if (!canModify) {
+      toast.warning(`Cannot put ${shipment.status} shipment on hold`);
+      return;
+    }
+    
+    if (!confirm(`Put shipment ${shipment.trackingNumber} on hold?`)) return;
+    
+    setUpdating(true);
+    try {
+      const result = await updateShipmentInConsolidation(consolidationId, shipment._id, {
+        status: 'on_hold',
+        holdReason: 'Manual hold by admin',
+        notes: 'Shipment placed on hold'
+      });
+      
+      if (result.success) {
+        toast.info(`📦 Shipment ${shipment.trackingNumber} is on hold`);
+        if (onShipmentUpdated) onShipmentUpdated();
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      console.error('Hold error:', error);
+      toast.error('Failed to put shipment on hold');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!canModify) {
+      toast.warning(`Cannot cancel ${shipment.status} shipment`);
+      return;
+    }
+    
+    if (!cancelReason.trim()) {
+      toast.warning('Please provide a cancellation reason');
+      return;
+    }
+    
+    setUpdating(true);
+    try {
+      const result = await updateShipmentInConsolidation(consolidationId, shipment._id, {
+        status: 'cancelled',
+        cancellationReason: cancelReason,
+        notes: `Shipment cancelled: ${cancelReason}`
+      });
+      
+      if (result.success) {
+        toast.warning(`❌ Shipment ${shipment.trackingNumber} cancelled and removed`);
+        if (onShipmentUpdated) onShipmentUpdated();
+        setShowCancelReason(false);
+        setCancelReason('');
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      console.error('Cancel error:', error);
+      toast.error('Failed to cancel shipment');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleResume = async () => {
+    if (shipment.status !== 'on_hold') {
+      toast.warning('Only on hold shipments can be resumed');
+      return;
+    }
+    
+    setUpdating(true);
+    try {
+      const result = await updateShipmentInConsolidation(consolidationId, shipment._id, {
+        status: 'in_progress',
+        notes: 'Resumed from hold'
+      });
+      
+      if (result.success) {
+        toast.success(`✅ Shipment ${shipment.trackingNumber} resumed`);
+        if (onShipmentUpdated) onShipmentUpdated();
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      console.error('Resume error:', error);
+      toast.error('Failed to resume shipment');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const showActions = shipment.status !== 'cancelled' && 
+                       shipment.status !== 'delivered' && 
+                       shipment.status !== 'completed';
+
+  // Get border and background colors based on status
+  const getCardStyles = () => {
+    const status = shipment.status;
+    if (status === 'on_hold') return 'border-orange-300 bg-orange-50';
+    if (status === 'cancelled') return 'border-red-300 bg-red-50';
+    if (status === 'delivered') return 'border-green-300 bg-green-50';
+    if (status === 'completed') return 'border-emerald-300 bg-emerald-50';
+    if (status === 'in_transit') return 'border-blue-200 bg-blue-50/30';
+    if (status === 'arrived_at_destination_port') return 'border-green-200 bg-green-50/30';
+    if (status === 'customs_cleared') return 'border-emerald-200 bg-emerald-50/30';
+    return 'border-gray-200 bg-white';
+  };
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-all mb-2">
+    <div className={`rounded-lg border overflow-hidden hover:shadow-md transition-all ${getCardStyles()}`}>
       {/* Header */}
       <div 
-        className="p-2 bg-gradient-to-r from-purple-50 to-pink-50 cursor-pointer flex items-center justify-between"
+        className="p-2 cursor-pointer flex items-center justify-between"
         onClick={() => setExpanded(!expanded)}
       >
-        <div className="flex items-center space-x-2">
-          <div className="p-1.5 bg-purple-100 rounded-lg">
-            <Ship className="h-3 w-3 text-purple-600" />
+        <div className="flex items-center space-x-2 flex-1 min-w-0">
+          <div className={`p-1.5 rounded-lg flex-shrink-0 ${
+            shipment.status === 'on_hold' ? 'bg-orange-100' :
+            shipment.status === 'cancelled' ? 'bg-red-100' :
+            shipment.status === 'delivered' ? 'bg-green-100' :
+            shipment.status === 'completed' ? 'bg-emerald-100' :
+            shipment.status === 'in_transit' ? 'bg-blue-100' :
+            shipment.status === 'arrived_at_destination_port' ? 'bg-green-100' :
+            shipment.status === 'customs_cleared' ? 'bg-emerald-100' :
+            'bg-purple-100'
+          }`}>
+            <StatusIcon className={`h-3 w-3 ${
+              shipment.status === 'on_hold' ? 'text-orange-600' :
+              shipment.status === 'cancelled' ? 'text-red-600' :
+              shipment.status === 'delivered' ? 'text-green-600' :
+              shipment.status === 'completed' ? 'text-emerald-600' :
+              shipment.status === 'in_transit' ? 'text-blue-600' :
+              shipment.status === 'arrived_at_destination_port' ? 'text-green-600' :
+              shipment.status === 'customs_cleared' ? 'text-emerald-600' :
+              'text-purple-600'
+            }`} />
           </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="font-mono text-xs font-medium">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center space-x-2 flex-wrap gap-1">
+              <span className="font-mono text-xs font-medium truncate">
                 {shipment.trackingNumber || `SHP-${shipment._id?.slice(-6)}`}
               </span>
-              {/* <span className={`px-1.5 py-0.5 text-[10px] rounded-full ${
-                shipment.status === 'delivered' ? 'bg-green-100 text-green-700' :
-                shipment.status === 'in_transit' ? 'bg-blue-100 text-blue-700' :
-                'bg-gray-100 text-gray-700'
-              }`}>
-                {shipment.status?.replace(/_/g, ' ') || 'pending'}
-              </span> */}
+              
+              {/* Status Badge */}
+              <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] rounded-full border ${display.color}`}>
+                <StatusIcon className="h-2.5 w-2.5 mr-0.5" />
+                {display.label}
+              </span>
+
+              {/* Current Location */}
+              {currentLocation && currentLocation !== 'Processing' && (
+                <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] rounded-full bg-gray-100 text-gray-600">
+                  <MapPin className="h-2 w-2 mr-0.5" />
+                  <span className="truncate max-w-[80px]">{currentLocation}</span>
+                </span>
+              )}
             </div>
-            {/* <div className="text-[10px] text-gray-600 mt-0.5">
-              Customer: {shipment.customerId?.slice(-6) || 'N/A'}
-            </div> */}
+            <div className="text-[10px] text-gray-500 mt-0.5 flex items-center space-x-2">
+              <span>{shipment.weight || 0} kg • {shipment.volume || 0} m³</span>
+              {estimatedDelivery && (
+                <span className="text-green-600 flex items-center">
+                  <Calendar className="h-2.5 w-2.5 mr-0.5" />
+                  Est: {new Date(estimatedDelivery).toLocaleDateString()}
+                </span>
+              )}
+            </div>
           </div>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 flex-shrink-0">
+          {/* Progress bar */}
+          {display.progress !== null && display.progress > 0 && (
+            <div className="w-12 h-1 bg-gray-200 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-orange-500 rounded-full transition-all duration-300"
+                style={{ width: `${display.progress}%` }}
+              />
+            </div>
+          )}
+          {trackingLoading && <Loader2 className="h-3 w-3 animate-spin text-gray-400" />}
           {expanded ? (
             <ChevronUp className="h-3 w-3 text-gray-500" />
           ) : (
@@ -405,23 +815,168 @@ const ShipmentCard = ({ shipment }) => {
       {/* Expanded Details */}
       {expanded && (
         <div className="p-2 bg-gray-50 border-t">
-          <h4 className="text-[10px] font-semibold mb-1.5">Shipment Details</h4>
-          <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+          {/* Tracking Timeline */}
+          {trackingData?.trackingHistory && trackingData.trackingHistory.length > 0 && (
+            <div className="mb-3">
+              <h4 className="text-[10px] font-semibold text-gray-700 mb-2 flex items-center">
+                <Clock className="h-3 w-3 mr-1 text-blue-500" />
+                Tracking Timeline
+              </h4>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {[...trackingData.trackingHistory]
+                  .sort((a, b) => new Date(b.timestamp || b.date) - new Date(a.timestamp || a.date))
+                  .map((event, idx) => (
+                    <div key={idx} className="flex items-start space-x-2">
+                      <div className="w-1.5 h-1.5 mt-1 rounded-full bg-blue-500 flex-shrink-0"></div>
+                      <div className="flex-1">
+                        <p className="text-[10px] font-medium">
+                          {event.status?.replace(/_/g, ' ') || event.label || 'Update'}
+                        </p>
+                        {event.description && (
+                          <p className="text-[9px] text-gray-500">{event.description}</p>
+                        )}
+                        {event.location && (
+                          <p className="text-[9px] text-gray-400 flex items-center mt-0.5">
+                            <MapPin className="h-2 w-2 mr-0.5" />
+                            {event.location}
+                          </p>
+                        )}
+                        <p className="text-[8px] text-gray-400">
+                          {new Date(event.timestamp || event.date).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Shipment Details */}
+          <div className="grid grid-cols-2 gap-1.5 text-[10px] mb-2">
             <div className="bg-white p-1.5 rounded">
               <span className="text-gray-500">Tracking Number:</span>
-              <p className="font-mono font-medium">{shipment.trackingNumber || 'N/A'}</p>
+              <p className="font-mono font-medium text-[10px]">{shipment.trackingNumber || 'N/A'}</p>
             </div>
-            {/* <div className="bg-white p-1.5 rounded">
+            <div className="bg-white p-1.5 rounded">
               <span className="text-gray-500">Status:</span>
-              <p className="font-medium capitalize">{shipment.status?.replace(/_/g, ' ') || 'N/A'}</p>
-            </div> */}
-            <div className="bg-white p-1.5 rounded col-span-2">
-              <span className="text-gray-500">Shipment ID:</span>
-              <p className="font-mono font-medium">{shipment._id || 'N/A'}</p>
+              <p className="font-medium flex items-center">
+                <StatusIcon className="h-3 w-3 mr-1" />
+                {display.label}
+              </p>
+            </div>
+            <div className="bg-white p-1.5 rounded">
+              <span className="text-gray-500">Progress:</span>
+              <div className="flex items-center space-x-1">
+                <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-orange-500 rounded-full transition-all duration-300"
+                    style={{ width: `${display.progress}%` }}
+                  />
+                </div>
+                <span className="text-[9px] font-medium">{display.progress}%</span>
+              </div>
+            </div>
+            <div className="bg-white p-1.5 rounded">
+              <span className="text-gray-500">Last Updated:</span>
+              <p className="font-medium text-[10px]">{lastUpdate ? new Date(lastUpdate).toLocaleString() : 'N/A'}</p>
             </div>
             <div className="bg-white p-1.5 rounded col-span-2">
-              <span className="text-gray-500">Customer ID:</span>
-              <p className="font-mono font-medium">{shipment.customerId || 'N/A'}</p>
+              <span className="text-gray-500">Current Location:</span>
+              <p className="font-medium text-blue-600 text-[10px]">{currentLocation}</p>
+            </div>
+          </div>
+          
+          {/* Package Details */}
+          {shipment.packages && shipment.packages.length > 0 && (
+            <div className="mb-2">
+              <h4 className="text-[10px] font-semibold text-gray-700 mb-1">Packages</h4>
+              <div className="space-y-1">
+                {shipment.packages.map((pkg, idx) => (
+                  <div key={idx} className="bg-white p-1.5 rounded text-[10px]">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{pkg.description || 'Package'}</span>
+                      <span className="text-gray-500">Qty: {pkg.quantity}</span>
+                    </div>
+                    <div className="text-gray-500 text-[9px]">
+                      {pkg.weight} kg • {pkg.volume} m³
+                      {pkg.dimensions && ` • ${pkg.dimensions.length}x${pkg.dimensions.width}x${pkg.dimensions.height}${pkg.dimensions.unit || 'cm'}`}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Action Buttons */}
+          {showActions && (
+            <div className="flex space-x-2 pt-2 border-t">
+              {shipment.status === 'on_hold' ? (
+                <button
+                  onClick={handleResume}
+                  disabled={updating}
+                  className="flex-1 px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 disabled:bg-gray-300 flex items-center justify-center transition-colors"
+                >
+                  {updating ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Play className="h-3 w-3 mr-1" />}
+                  Resume
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={handleOnHold}
+                    disabled={updating}
+                    className="flex-1 px-2 py-1 bg-orange-600 text-white rounded text-xs hover:bg-orange-700 disabled:bg-gray-300 flex items-center justify-center transition-colors"
+                  >
+                    {updating ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Pause className="h-3 w-3 mr-1" />}
+                    Hold
+                  </button>
+                  <button
+                    onClick={() => setShowCancelReason(true)}
+                    disabled={updating}
+                    className="flex-1 px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700 disabled:bg-gray-300 flex items-center justify-center transition-colors"
+                  >
+                    <Ban className="h-3 w-3 mr-1" />
+                    Cancel
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Cancel Reason Modal */}
+      {showCancelReason && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowCancelReason(false)}>
+          <div className="bg-white rounded-lg p-4 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <h4 className="text-sm font-bold mb-2">Cancel Shipment</h4>
+            <p className="text-xs text-gray-600 mb-3">
+              Shipment: <span className="font-mono">{shipment.trackingNumber}</span>
+            </p>
+            <textarea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Please provide cancellation reason..."
+              rows={3}
+              className="w-full p-2 text-sm border rounded-lg focus:ring-2 focus:ring-red-500 mb-3"
+              autoFocus
+            />
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => {
+                  setShowCancelReason(false);
+                  setCancelReason('');
+                }}
+                className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCancel}
+                disabled={!cancelReason.trim()}
+                className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300"
+              >
+                Confirm Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -577,6 +1132,7 @@ const ConsolidationCard = ({
   onOutForDelivery,
   onDelivered,
   onComplete,
+  onShipmentStatusChange, 
   searchTerm 
 }) => {
   const [showShipments, setShowShipments] = useState(false);
@@ -828,61 +1384,53 @@ const ConsolidationCard = ({
           {getActionButton()}
         </div>
 
-        {/* Shipments Toggle */}
-        {(items.length > 0 || shipments.length > 0) && (
-          <div className="mt-2">
-            <button
-              onClick={() => setShowShipments(!showShipments)}
-              className="w-full flex items-center justify-between text-[10px] text-gray-500 hover:text-gray-700"
-            >
-              <span>
-                {items.length || shipments.length} Shipment(s)
-                {(matchingShipmentIds.size > 0 || matchingItemIds.size > 0) && (
-                  <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-[10px] rounded-full">
-                    {matchingShipmentIds.size + matchingItemIds.size} match
-                  </span>
-                )}
-              </span>
-              {showShipments ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            </button>
-            
-            {showShipments && (
-              <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
-                {/* Show items if they exist */}
-                {items.length > 0 && (
-                  <>
-                    <p className="text-[10px] font-semibold text-gray-600 mt-1">Items:</p>
-                    {items.map((item, idx) => {
-                      if (!item) return null;
-                      const isMatch = matchingItemIds.has(item._id || item.shipmentId);
-                      return (
-                        <div key={idx} className={isMatch ? 'ring-2 ring-green-400 rounded-lg' : ''}>
-                          <ShipmentItemCard item={item} />
-                        </div>
-                      );
-                    })}
-                  </>
-                )}
-                
-                {/* Show shipments if they exist */}
-                {shipments.length > 0 && (
-                  <>
-                    {items.length > 0 && <p className="text-[10px] font-semibold text-gray-600 mt-2">Shipments:</p>}
-                    {shipments.map((shipment, idx) => {
-                      if (!shipment) return null;
-                      const isMatch = matchingShipmentIds.has(shipment._id);
-                      return (
-                        <div key={idx} className={isMatch ? 'ring-2 ring-green-400 rounded-lg' : ''}>
-                          <ShipmentCard shipment={shipment} />
-                        </div>
-                      );
-                    })}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+        {/* Shipments Toggle */} 
+
+{/* Shipments Toggle */}
+{(items.length > 0 || shipments.length > 0) && (
+  <div className="mt-2">
+    <button
+      onClick={() => setShowShipments(!showShipments)}
+      className="w-full flex items-center justify-between text-[10px] text-gray-500 hover:text-gray-700"
+    >
+      <span>
+        {shipments.length} Shipment(s)
+        {shipments.filter(s => s.status === 'on_hold').length > 0 && (
+          <span className="ml-2 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] rounded-full">
+            {shipments.filter(s => s.status === 'on_hold').length} on hold
+          </span>
         )}
+        {shipments.filter(s => s.status === 'cancelled').length > 0 && (
+          <span className="ml-2 px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded-full">
+            {shipments.filter(s => s.status === 'cancelled').length} cancelled
+          </span>
+        )}
+      </span>
+      {showShipments ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+    </button>
+    
+    {showShipments && (
+      <div className="mt-2 space-y-1 max-h-60 overflow-y-auto">
+        {shipments.map((shipment, idx) => {
+          if (!shipment) return null;
+          return (
+            <ShipmentCard
+              key={idx}
+              shipment={shipment}
+              consolidationId={consolidation._id}
+              consolidationStatus={consolidation.status}
+              onShipmentUpdated={() => {
+                if (typeof onShipmentStatusChange === 'function') {
+                  onShipmentStatusChange();
+                }
+              }}
+            />
+          );
+        })}
+      </div>
+    )}
+  </div>
+)}
       </div>
     </div>
   );
