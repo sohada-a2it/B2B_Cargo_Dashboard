@@ -1,4 +1,4 @@
-// components/shipments/AllShipments.jsx - আপডেটেড ট্র্যাকিং স্ট্যাটাস সহ
+// components/shipments/AllShipments.jsx - সম্পূর্ণ আপডেটেড (Return Request সহ)
 
 'use client';
 
@@ -49,7 +49,18 @@ import {
   groupShipmentsByStatus,
   groupShipmentsByMode,
   getTopRoutes,
-  exportShipmentsToCSV
+  exportShipmentsToCSV,
+  
+  // Return Request APIs
+  getAllReturnRequests,
+  approveReturnRequest,
+  rejectReturnRequest, 
+  customerConfirmReturn,
+  customerRejectReturn,
+  getReturnReasonText,
+  getReturnStatusText,
+  getReturnStatusColor,
+  formatReturnCost
 } from '@/Api/shipping';
 
 // Icons
@@ -76,7 +87,9 @@ import {
   Thermometer, Eye as EyeIcon, Shield, FileCheck,
   UserCog, Building2, Briefcase as BriefcaseIcon,
   FolderOpen, FileText as FileTextIcon, HardDrive,
-  Send, Flag, Award, Pause, RotateCcw, Layers
+  Send, Flag, Award, Pause, RotateCcw, Layers, 
+  Undo2, ThumbsUp, ThumbsDown, DollarSign as DollarSignIcon,
+  Receipt as ReceiptIcon, RefreshCw as RefreshIcon
 } from 'lucide-react';
 
 // ==================== COLOR CONSTANTS ====================
@@ -318,6 +331,38 @@ const STATUS_CONFIG = {
     progress: 0,
     editable: false,
     cancellable: false
+  },
+  return_requested: {
+    label: 'Return Requested',
+    color: 'bg-purple-50 text-purple-700 border-purple-200',
+    icon: Undo2,
+    progress: 0,
+    editable: false,
+    cancellable: false
+  },
+  return_approved: {
+    label: 'Return Approved',
+    color: 'bg-blue-50 text-blue-700 border-blue-200',
+    icon: ThumbsUp,
+    progress: 0,
+    editable: false,
+    cancellable: false
+  },
+  return_rejected: {
+    label: 'Return Rejected',
+    color: 'bg-red-50 text-red-700 border-red-200',
+    icon: ThumbsDown,
+    progress: 0,
+    editable: false,
+    cancellable: false
+  },
+  return_completed: {
+    label: 'Return Completed',
+    color: 'bg-green-50 text-green-700 border-green-200',
+    icon: CheckCircleSolid,
+    progress: 0,
+    editable: false,
+    cancellable: false
   }
 };
 
@@ -385,6 +430,46 @@ const SHIPMENT_MODE_COLORS = {
   road_freight: COLORS.success,
   rail_freight: COLORS.purple,
   express_courier: COLORS.orange
+};
+
+// ==================== RETURN REQUEST STATUS CONFIGURATION ====================
+const RETURN_STATUS_CONFIG = {
+  pending: {
+    label: 'Pending Review',
+    color: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+    icon: Clock,
+    bgColor: 'bg-yellow-50'
+  },
+  approved: {
+    label: 'Approved - Awaiting Customer',
+    color: 'bg-blue-100 text-blue-700 border-blue-200',
+    icon: ThumbsUp,
+    bgColor: 'bg-blue-50'
+  },
+  customer_confirmed: {
+    label: 'Customer Confirmed - Ready to Complete',
+    color: 'bg-purple-100 text-purple-700 border-purple-200',
+    icon: CheckCircle,
+    bgColor: 'bg-purple-50'
+  },
+  rejected_by_admin: {
+    label: 'Rejected by Admin',
+    color: 'bg-red-100 text-red-700 border-red-200',
+    icon: ThumbsDown,
+    bgColor: 'bg-red-50'
+  },
+  rejected_by_customer: {
+    label: 'Cancelled by Customer',
+    color: 'bg-orange-100 text-orange-700 border-orange-200',
+    icon: XCircle,
+    bgColor: 'bg-orange-50'
+  },
+  completed: {
+    label: 'Completed',
+    color: 'bg-green-100 text-green-700 border-green-200',
+    icon: CheckCircleSolid,
+    bgColor: 'bg-green-50'
+  }
 };
 
 // ==================== COMPONENTS ====================
@@ -691,6 +776,8 @@ const ActionMenu = ({ shipment, onAction }) => {
 
   if (!shipment) return null;
 
+  const hasReturnRequest = shipment.returnRequest && shipment.returnRequest.status !== 'none';
+
   const actions = [
     { 
       label: 'View Details', 
@@ -705,8 +792,28 @@ const ActionMenu = ({ shipment, onAction }) => {
       action: 'cancel', 
       color: 'text-red-600',
       show: shipment.status !== 'cancelled' && shipment.status !== 'delivered'
-    },  
+    },
   ];
+
+  if (hasReturnRequest) {
+    const returnStatus = shipment.returnRequest.status;
+    let returnLabel = 'Return Request';
+    let returnColor = 'text-purple-600';
+    if (returnStatus === 'pending') returnLabel = 'Return Pending';
+    else if (returnStatus === 'approved') returnLabel = 'Return Approved';
+    else if (returnStatus === 'customer_confirmed') returnLabel = 'Return Confirmed';
+    else if (returnStatus === 'rejected_by_admin') returnLabel = 'Return Rejected';
+    else if (returnStatus === 'rejected_by_customer') returnLabel = 'Return Cancelled';
+    else if (returnStatus === 'completed') returnLabel = 'Return Completed';
+    
+    actions.push({
+      label: returnLabel,
+      icon: Undo2,
+      action: 'viewReturn',
+      color: returnColor,
+      show: true
+    });
+  }
 
   return (
     <div className="relative" ref={menuRef}>
@@ -807,6 +914,352 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   );
 };
 
+// ==================== RETURN REQUESTS LIST MODAL (Admin) ====================
+const ReturnRequestsModal = ({ isOpen, onClose, onRefresh }) => {
+  const [returnRequests, setReturnRequests] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [pagination, setPagination] = useState({ total: 0, page: 1, pages: 1 });
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedReturn, setSelectedReturn] = useState(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [summary, setSummary] = useState([]);
+
+  const fetchReturnRequests = async () => {
+    setLoading(true);
+    try {
+      const result = await getAllReturnRequests({ 
+        status: statusFilter === 'all' ? '' : statusFilter,
+        page: pagination.page,
+        limit: 20
+      });
+      if (result.success) {
+        setReturnRequests(result.data || []);
+        setPagination(result.pagination || { total: 0, page: 1, pages: 1 });
+        setSummary(result.summary || []);
+      }
+    } catch (error) {
+      toast.error('Failed to fetch return requests');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchReturnRequests();
+    }
+  }, [isOpen, statusFilter, pagination.page]);
+
+  const handleApprove = async (id, data) => {
+    const result = await approveReturnRequest(id, data);
+    if (result.success) {
+      toast.success(result.message || 'Return request approved!');
+      fetchReturnRequests();
+      onRefresh?.();
+      setShowReviewModal(false);
+    } else {
+      toast.error(result.message);
+    }
+  };
+
+  const handleReject = async (id, reason) => {
+    const result = await rejectReturnRequest(id, reason);
+    if (result.success) {
+      toast.success(result.message || 'Return request rejected');
+      fetchReturnRequests();
+      onRefresh?.();
+      setShowReviewModal(false);
+    } else {
+      toast.error(result.message);
+    }
+  };
+
+  const handleComplete = async (id, data) => {
+    const result = await completeReturn(id, data);
+    if (result.success) {
+      toast.success(result.message || 'Return completed successfully!');
+      fetchReturnRequests();
+      onRefresh?.();
+      setShowReviewModal(false);
+    } else {
+      toast.error(result.message);
+    }
+  };
+
+  const statusOptions = [
+    { value: 'all', label: 'All Requests' },
+    { value: 'pending', label: 'Pending Review' },
+    { value: 'approved', label: 'Approved' },
+    { value: 'customer_confirmed', label: 'Customer Confirmed' },
+    { value: 'rejected_by_admin', label: 'Rejected by Admin' },
+    { value: 'rejected_by_customer', label: 'Cancelled by Customer' },
+    { value: 'completed', label: 'Completed' }
+  ];
+
+  const getSummaryCount = (status) => {
+    const item = summary.find(s => s._id === status);
+    return item?.count || 0;
+  };
+
+  return (
+    <>
+      <Modal isOpen={isOpen} onClose={onClose} title="Return Requests Management" size="xl">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
+            {statusOptions.map(opt => (
+              <div 
+                key={opt.value}
+                onClick={() => setStatusFilter(opt.value)}
+                className={`p-2 rounded-lg text-center cursor-pointer transition-all ${
+                  statusFilter === opt.value 
+                    ? 'bg-[#E67E22] text-white' 
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <p className="text-xs font-medium">{opt.label}</p>
+                <p className="text-lg font-bold">{getSummaryCount(opt.value)}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex justify-end">
+            <Button variant="light" size="sm" onClick={fetchReturnRequests} icon={<RefreshIcon className="h-4 w-4" />}>
+              Refresh
+            </Button>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin" style={{ color: COLORS.primary }} />
+            </div>
+          ) : returnRequests.length === 0 ? (
+            <div className="text-center py-8">
+              <Package className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+              <p className="text-gray-500">No return requests found</p>
+            </div>
+          ) : (
+            <div className="border rounded-lg overflow-hidden">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Request Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Shipment</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Customer</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Reason</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Return Cost</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {returnRequests.map((req) => {
+                    const statusConfig = RETURN_STATUS_CONFIG[req.status] || RETURN_STATUS_CONFIG.pending;
+                    const StatusIcon = statusConfig.icon;
+                    const isFree = req.isFreeReturn || req.returnCost === 0;
+                    
+                    return (
+                      <tr key={req._id || req.shipmentId} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm">
+                          {formatShipmentDate(req.requestedAt, 'short')}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div>
+                            <p className="text-sm font-medium">#{req.shipmentNumber}</p>
+                            {req.trackingNumber && <p className="text-xs text-gray-500">{req.trackingNumber}</p>}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="text-sm">{req.customerName || 'N/A'}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="text-sm">{getReturnReasonText(req.reason)}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`text-sm font-medium ${isFree ? 'text-green-600' : 'text-orange-600'}`}>
+                            {isFree ? 'FREE' : `$${req.returnCost || 0} ${req.returnCostCurrency || 'USD'}`}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${statusConfig.color}`}>
+                            <StatusIcon className="h-3 w-3 mr-1" />
+                            {statusConfig.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Button size="xs" variant="light" onClick={() => { setSelectedReturn(req); setShowReviewModal(true); }} icon={<Eye className="h-3 w-3" />}>
+                            Review
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {pagination.pages > 1 && (
+            <div className="flex justify-between items-center pt-4">
+              <span className="text-xs text-gray-500">Total: {pagination.total} requests</span>
+              <div className="flex items-center space-x-2">
+                <Button size="xs" variant="ghost" disabled={pagination.page === 1} onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))} icon={<ChevronLeft className="h-4 w-4" />} />
+                <span className="text-sm">Page {pagination.page} of {pagination.pages}</span>
+                <Button size="xs" variant="ghost" disabled={pagination.page === pagination.pages} onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))} icon={<ChevronRight className="h-4 w-4" />} />
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      <ReturnRequestReviewModal
+        isOpen={showReviewModal}
+        onClose={() => setShowReviewModal(false)}
+        returnRequest={selectedReturn}
+        onApprove={handleApprove}
+        onReject={handleReject}
+        onComplete={handleComplete}
+        onRefresh={fetchReturnRequests}
+      />
+    </>
+  );
+};
+
+// ==================== RETURN REQUEST REVIEW MODAL (Admin) ====================
+const ReturnRequestReviewModal = ({ isOpen, onClose, returnRequest, onApprove, onReject, onComplete, onRefresh }) => {
+  const [action, setAction] = useState('approve');
+  const [formData, setFormData] = useState({
+    returnTrackingNumber: '',
+    notes: '',
+    rejectionReason: '',
+    refundAmount: '',
+    refundCurrency: 'USD',
+    refundReference: ''
+  });
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (returnRequest) {
+      setFormData({
+        returnTrackingNumber: returnRequest.returnTrackingNumber || '',
+        notes: returnRequest.returnNotes || '',
+        rejectionReason: returnRequest.rejectionReason || '',
+        refundAmount: returnRequest.refundAmount || '',
+        refundCurrency: returnRequest.refundCurrency || 'USD',
+        refundReference: returnRequest.refundReference || ''
+      });
+    }
+  }, [returnRequest]);
+
+  if (!isOpen || !returnRequest) return null;
+
+  const statusConfig = RETURN_STATUS_CONFIG[returnRequest.status] || RETURN_STATUS_CONFIG.pending;
+  const StatusIcon = statusConfig.icon;
+  const isFree = returnRequest.isFreeReturn || returnRequest.returnCost === 0;
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    try {
+      if (action === 'approve') {
+        await onApprove(returnRequest.shipmentId || returnRequest._id, {
+          returnTrackingNumber: formData.returnTrackingNumber,
+          notes: formData.notes,
+          adjustCost: null
+        });
+      } else if (action === 'reject') {
+        if (!formData.rejectionReason) {
+          toast.warning('Please provide a rejection reason');
+          setLoading(false);
+          return;
+        }
+        await onReject(returnRequest.shipmentId || returnRequest._id, formData.rejectionReason);
+      } else if (action === 'complete') {
+        await onComplete(returnRequest.shipmentId || returnRequest._id, {
+          notes: formData.notes,
+          refundAmount: formData.refundAmount,
+          refundCurrency: formData.refundCurrency,
+          refundReference: formData.refundReference
+        });
+      }
+      onClose();
+    } catch (error) {} finally { setLoading(false); }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Return Request Review" size="lg">
+      <div className="space-y-5">
+        <div className={`p-4 rounded-lg border ${statusConfig.bgColor}`}>
+          <div className="flex items-center space-x-3">
+            <StatusIcon className="h-5 w-5" />
+            <div>
+              <p className="font-semibold">Status: {statusConfig.label}</p>
+              <p className="text-xs opacity-75">Requested: {formatShipmentDate(returnRequest.requestedAt, 'long')}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="border rounded-lg p-4">
+          <h5 className="text-sm font-medium mb-3">Return Request Details</h5>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-4">
+              <div><p className="text-xs text-gray-500">Shipment</p><p className="text-sm font-medium">#{returnRequest.shipmentNumber}</p></div>
+              <div><p className="text-xs text-gray-500">Tracking</p><p className="text-sm">{returnRequest.trackingNumber || 'N/A'}</p></div>
+            </div>
+            <div><p className="text-xs text-gray-500">Customer</p><p className="text-sm font-medium">{returnRequest.customerName || 'N/A'}</p></div>
+            <div><p className="text-xs text-gray-500">Reason</p><p className="text-sm">{getReturnReasonText(returnRequest.reason)}</p></div>
+            <div><p className="text-xs text-gray-500">Description</p><p className="text-sm text-gray-600">{returnRequest.description}</p></div>
+            <div><p className="text-xs text-gray-500">Return Cost</p><p className={`text-sm font-semibold ${isFree ? 'text-green-600' : 'text-orange-600'}`}>{isFree ? 'FREE' : `$${returnRequest.returnCost || 0} ${returnRequest.returnCostCurrency || 'USD'}`}</p></div>
+          </div>
+        </div>
+
+        {returnRequest.status === 'pending' && (
+          <div className="space-y-4">
+            <div className="flex space-x-4 border-b pb-3">
+              <button onClick={() => setAction('approve')} className={`px-4 py-2 rounded-lg text-sm font-medium ${action === 'approve' ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-gray-100 text-gray-600'}`}>Approve Return</button>
+              <button onClick={() => setAction('reject')} className={`px-4 py-2 rounded-lg text-sm font-medium ${action === 'reject' ? 'bg-red-100 text-red-700 border border-red-300' : 'bg-gray-100 text-gray-600'}`}>Reject Return</button>
+            </div>
+            {action === 'approve' && (
+              <div className="space-y-4">
+                <Input label="Return Tracking Number" value={formData.returnTrackingNumber} onChange={(e) => setFormData({ ...formData, returnTrackingNumber: e.target.value })} placeholder="Enter return tracking number" icon={Hash} />
+                <TextArea label="Admin Notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Add any notes about this approval..." rows={3} />
+                <div className="bg-blue-50 p-3 rounded-lg"><p className="text-sm text-blue-700"><Info className="h-4 w-4 inline mr-1" />Customer will be notified and asked to confirm the return.</p></div>
+              </div>
+            )}
+            {action === 'reject' && (
+              <TextArea label="Rejection Reason" value={formData.rejectionReason} onChange={(e) => setFormData({ ...formData, rejectionReason: e.target.value })} placeholder="Please provide a reason for rejection..." rows={3} required />
+            )}
+          </div>
+        )}
+
+        {returnRequest.status === 'customer_confirmed' && (
+          <div className="space-y-4">
+            <div className="bg-purple-50 p-3 rounded-lg"><p className="text-sm text-purple-700"><CheckCircle className="h-4 w-4 inline mr-1" />Customer has confirmed this return. Please complete the return process.</p></div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Refund Amount" type="number" step="0.01" value={formData.refundAmount} onChange={(e) => setFormData({ ...formData, refundAmount: e.target.value })} placeholder="0.00" icon={DollarSignIcon} />
+              <Select label="Refund Currency" value={formData.refundCurrency} onChange={(e) => setFormData({ ...formData, refundCurrency: e.target.value })} options={[{ value: 'USD', label: 'USD' }, { value: 'EUR', label: 'EUR' }, { value: 'GBP', label: 'GBP' }, { value: 'BDT', label: 'BDT' }]} />
+            </div>
+            <Input label="Refund Reference" value={formData.refundReference} onChange={(e) => setFormData({ ...formData, refundReference: e.target.value })} placeholder="Transaction ID / Reference number" icon={ReceiptIcon} />
+            <TextArea label="Completion Notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Notes about the return completion..." rows={3} />
+          </div>
+        )}
+
+        {returnRequest.status === 'approved' && (
+          <div className="bg-yellow-50 p-3 rounded-lg"><p className="text-sm text-yellow-700"><Clock className="h-4 w-4 inline mr-1" />Waiting for customer confirmation.</p></div>
+        )}
+
+        {returnRequest.status === 'completed' && (
+          <div className="bg-green-50 p-3 rounded-lg"><p className="text-sm text-green-700"><CheckCircleSolid className="h-4 w-4 inline mr-1" />Return completed.{returnRequest.refundAmount > 0 && ` Refund: $${returnRequest.refundAmount} ${returnRequest.refundCurrency}`}</p></div>
+        )}
+
+        <div className="flex justify-end space-x-3 pt-4">
+          <Button variant="ghost" onClick={onClose}>Close</Button>
+          {returnRequest.status === 'pending' && <Button variant={action === 'approve' ? 'success' : 'danger'} onClick={handleSubmit} isLoading={loading}>{action === 'approve' ? 'Approve Return' : 'Reject Return'}</Button>}
+          {returnRequest.status === 'customer_confirmed' && <Button variant="primary" onClick={handleSubmit} isLoading={loading}>Complete Return</Button>}
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
 // Status Update Modal
 const StatusUpdateModal = ({ isOpen, onClose, shipment, onUpdate }) => {
   const [formData, setFormData] = useState({
@@ -818,99 +1271,31 @@ const StatusUpdateModal = ({ isOpen, onClose, shipment, onUpdate }) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (shipment) {
-      setFormData({
-        status: shipment.status || '',
-        location: '',
-        description: '',
-        timestamp: new Date().toISOString().slice(0, 16)
-      });
-    }
+    if (shipment) setFormData({ status: shipment.status || '', location: '', description: '', timestamp: new Date().toISOString().slice(0, 16) });
   }, [shipment]);
 
   if (!isOpen || !shipment) return null;
 
-  const statusOptions = Object.entries(STATUS_CONFIG).map(([value, config]) => ({
-    value,
-    label: config.label
-  }));
+  const statusOptions = Object.entries(STATUS_CONFIG).map(([value, config]) => ({ value, label: config.label }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.status) {
-      toast.warning('Please select a status');
-      return;
-    }
-
+    if (!formData.status) { toast.warning('Please select a status'); return; }
     setLoading(true);
     try {
-      await onUpdate(shipment._id, {
-        status: formData.status,
-        location: formData.location,
-        description: formData.description,
-        timestamp: formData.timestamp
-      });
+      await onUpdate(shipment._id, { status: formData.status, location: formData.location, description: formData.description, timestamp: formData.timestamp });
       onClose();
-    } catch (error) {
-      // Error handled in parent
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Update Shipment Status" size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Select
-          label="New Status"
-          value={formData.status}
-          onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-          options={statusOptions}
-          placeholder="Select status"
-          required
-          icon={Activity}
-        />
-
-        <Input
-          label="Current Location"
-          value={formData.location}
-          onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-          placeholder="e.g., Dhaka Warehouse"
-          icon={MapPin}
-        />
-
-        <TextArea
-          label="Description"
-          value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          placeholder="Additional details about this status update..."
-          rows={3}
-        />
-
-        <Input
-          type="datetime-local"
-          label="Timestamp"
-          value={formData.timestamp}
-          onChange={(e) => setFormData({ ...formData, timestamp: e.target.value })}
-          icon={Calendar}
-        />
-
-        <div className="flex justify-end space-x-3 pt-4">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            isLoading={loading}
-          >
-            Update Status
-          </Button>
-        </div>
+        <Select label="New Status" value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })} options={statusOptions} placeholder="Select status" required icon={Activity} />
+        <Input label="Current Location" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} placeholder="e.g., Dhaka Warehouse" icon={MapPin} />
+        <TextArea label="Description" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Additional details..." rows={3} />
+        <Input type="datetime-local" label="Timestamp" value={formData.timestamp} onChange={(e) => setFormData({ ...formData, timestamp: e.target.value })} icon={Calendar} />
+        <div className="flex justify-end space-x-3 pt-4"><Button type="button" variant="ghost" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" isLoading={loading}>Update Status</Button></div>
       </form>
     </Modal>
   );
@@ -918,121 +1303,30 @@ const StatusUpdateModal = ({ isOpen, onClose, shipment, onUpdate }) => {
 
 // Tracking Update Modal
 const TrackingUpdateModal = ({ isOpen, onClose, shipment, onAdd }) => {
-  const [formData, setFormData] = useState({
-    status: 'in_transit',
-    location: '',
-    description: '',
-    timestamp: new Date().toISOString().slice(0, 16),
-    coordinates: ''
-  });
+  const [formData, setFormData] = useState({ status: 'in_transit', location: '', description: '', timestamp: new Date().toISOString().slice(0, 16), coordinates: '' });
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (shipment) {
-      setFormData({
-        status: 'in_transit',
-        location: '',
-        description: '',
-        timestamp: new Date().toISOString().slice(0, 16),
-        coordinates: ''
-      });
-    }
-  }, [shipment]);
-
+  useEffect(() => { if (shipment) setFormData({ status: 'in_transit', location: '', description: '', timestamp: new Date().toISOString().slice(0, 16), coordinates: '' }); }, [shipment]);
   if (!isOpen || !shipment) return null;
 
-  const trackingStatusOptions = [
-    { value: 'pending', label: 'Pending Pickup' },
-    { value: 'picked_up', label: 'Picked Up' },
-    { value: 'in_transit', label: 'In Transit' },
-    { value: 'arrived_at_facility', label: 'Arrived at Facility' },
-    { value: 'arrived_at_destination_port', label: 'Arrived at Port' },
-    { value: 'customs_cleared', label: 'Customs Cleared' },
-    { value: 'out_for_delivery', label: 'Out for Delivery' },
-    { value: 'delivered', label: 'Delivered' },
-    { value: 'exception', label: 'Exception' }
-  ];
+  const trackingStatusOptions = [{ value: 'pending', label: 'Pending Pickup' }, { value: 'picked_up', label: 'Picked Up' }, { value: 'in_transit', label: 'In Transit' }, { value: 'arrived_at_facility', label: 'Arrived at Facility' }, { value: 'arrived_at_destination_port', label: 'Arrived at Port' }, { value: 'customs_cleared', label: 'Customs Cleared' }, { value: 'out_for_delivery', label: 'Out for Delivery' }, { value: 'delivered', label: 'Delivered' }, { value: 'exception', label: 'Exception' }];
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.location) {
-      toast.warning('Location is required');
-      return;
-    }
-
+    if (!formData.location) { toast.warning('Location is required'); return; }
     setLoading(true);
-    try {
-      await onAdd(shipment._id, formData);
-      onClose();
-    } catch (error) {
-      // Error handled in parent
-    } finally {
-      setLoading(false);
-    }
+    try { await onAdd(shipment._id, formData); onClose(); } finally { setLoading(false); }
   };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Add Tracking Update" size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Select
-          label="Tracking Status"
-          value={formData.status}
-          onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-          options={trackingStatusOptions}
-          placeholder="Select status"
-          required
-          icon={Navigation}
-        />
-
-        <Input
-          label="Location"
-          value={formData.location}
-          onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-          placeholder="Current location"
-          required
-          icon={MapPin}
-        />
-
-        <TextArea
-          label="Description"
-          value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          placeholder="Tracking details..."
-          rows={3}
-        />
-
-        <Input
-          type="datetime-local"
-          label="Timestamp"
-          value={formData.timestamp}
-          onChange={(e) => setFormData({ ...formData, timestamp: e.target.value })}
-          icon={Calendar}
-        />
-
-        <Input
-          label="GPS Coordinates (Optional)"
-          value={formData.coordinates}
-          onChange={(e) => setFormData({ ...formData, coordinates: e.target.value })}
-          placeholder="e.g., 23.8103° N, 90.4125° E"
-          icon={Globe}
-        />
-
-        <div className="flex justify-end space-x-3 pt-4">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            isLoading={loading}
-          >
-            Add Tracking
-          </Button>
-        </div>
+        <Select label="Tracking Status" value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })} options={trackingStatusOptions} placeholder="Select status" required icon={Navigation} />
+        <Input label="Location" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} placeholder="Current location" required icon={MapPin} />
+        <TextArea label="Description" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Tracking details..." rows={3} />
+        <Input type="datetime-local" label="Timestamp" value={formData.timestamp} onChange={(e) => setFormData({ ...formData, timestamp: e.target.value })} icon={Calendar} />
+        <Input label="GPS Coordinates (Optional)" value={formData.coordinates} onChange={(e) => setFormData({ ...formData, coordinates: e.target.value })} placeholder="e.g., 23.8103° N, 90.4125° E" icon={Globe} />
+        <div className="flex justify-end space-x-3 pt-4"><Button type="button" variant="ghost" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" isLoading={loading}>Add Tracking</Button></div>
       </form>
     </Modal>
   );
@@ -1040,106 +1334,29 @@ const TrackingUpdateModal = ({ isOpen, onClose, shipment, onAdd }) => {
 
 // Assign Staff Modal
 const AssignModal = ({ isOpen, onClose, shipment, onAssign }) => {
-  const [formData, setFormData] = useState({
-    staffId: '',
-    role: 'operations',
-    notes: ''
-  });
+  const [formData, setFormData] = useState({ staffId: '', role: 'operations', notes: '' });
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (shipment) {
-      setFormData({
-        staffId: '',
-        role: 'operations',
-        notes: ''
-      });
-    }
-  }, [shipment]);
-
+  useEffect(() => { if (shipment) setFormData({ staffId: '', role: 'operations', notes: '' }); }, [shipment]);
   if (!isOpen || !shipment) return null;
 
-  const staffOptions = [
-    { value: 'staff1', label: 'John Doe (Operations)' },
-    { value: 'staff2', label: 'Jane Smith (Warehouse)' },
-    { value: 'staff3', label: 'Mike Johnson (Driver)' },
-    { value: 'staff4', label: 'Sarah Wilson (Customer Service)' },
-    { value: 'staff5', label: 'David Brown (Customs Broker)' }
-  ];
-
-  const roleOptions = [
-    { value: 'operations', label: 'Operations' },
-    { value: 'warehouse', label: 'Warehouse' },
-    { value: 'driver', label: 'Driver' },
-    { value: 'customs', label: 'Customs Broker' },
-    { value: 'customer_service', label: 'Customer Service' }
-  ];
+  const staffOptions = [{ value: 'staff1', label: 'John Doe (Operations)' }, { value: 'staff2', label: 'Jane Smith (Warehouse)' }, { value: 'staff3', label: 'Mike Johnson (Driver)' }, { value: 'staff4', label: 'Sarah Wilson (Customer Service)' }, { value: 'staff5', label: 'David Brown (Customs Broker)' }];
+  const roleOptions = [{ value: 'operations', label: 'Operations' }, { value: 'warehouse', label: 'Warehouse' }, { value: 'driver', label: 'Driver' }, { value: 'customs', label: 'Customs Broker' }, { value: 'customer_service', label: 'Customer Service' }];
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.staffId || !formData.role) {
-      toast.warning('Staff and role are required');
-      return;
-    }
-
+    if (!formData.staffId || !formData.role) { toast.warning('Staff and role are required'); return; }
     setLoading(true);
-    try {
-      await onAssign(shipment._id, formData);
-      onClose();
-    } catch (error) {
-      // Error handled in parent
-    } finally {
-      setLoading(false);
-    }
+    try { await onAssign(shipment._id, formData); onClose(); } finally { setLoading(false); }
   };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Assign Staff to Shipment" size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Select
-          label="Staff Member"
-          value={formData.staffId}
-          onChange={(e) => setFormData({ ...formData, staffId: e.target.value })}
-          options={staffOptions}
-          placeholder="Select staff"
-          required
-          icon={UserCog}
-        />
-
-        <Select
-          label="Role"
-          value={formData.role}
-          onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-          options={roleOptions}
-          placeholder="Select role"
-          required
-          icon={BriefcaseIcon}
-        />
-
-        <TextArea
-          label="Notes"
-          value={formData.notes}
-          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          placeholder="Additional instructions..."
-          rows={3}
-        />
-
-        <div className="flex justify-end space-x-3 pt-4">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            isLoading={loading}
-          >
-            Assign Staff
-          </Button>
-        </div>
+        <Select label="Staff Member" value={formData.staffId} onChange={(e) => setFormData({ ...formData, staffId: e.target.value })} options={staffOptions} placeholder="Select staff" required icon={UserCog} />
+        <Select label="Role" value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })} options={roleOptions} placeholder="Select role" required icon={BriefcaseIcon} />
+        <TextArea label="Notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Additional instructions..." rows={3} />
+        <div className="flex justify-end space-x-3 pt-4"><Button type="button" variant="ghost" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" isLoading={loading}>Assign Staff</Button></div>
       </form>
     </Modal>
   );
@@ -1147,182 +1364,34 @@ const AssignModal = ({ isOpen, onClose, shipment, onAssign }) => {
 
 // Add Cost Modal
 const CostModal = ({ isOpen, onClose, shipment, onAdd }) => {
-  const [formData, setFormData] = useState({
-    type: 'transport',
-    description: '',
-    amount: '',
-    currency: 'USD',
-    paidBy: 'customer',
-    paidStatus: 'pending',
-    dueDate: '',
-    notes: ''
-  });
+  const [formData, setFormData] = useState({ type: 'transport', description: '', amount: '', currency: 'USD', paidBy: 'customer', paidStatus: 'pending', dueDate: '', notes: '' });
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (shipment) {
-      setFormData({
-        type: 'transport',
-        description: '',
-        amount: '',
-        currency: 'USD',
-        paidBy: 'customer',
-        paidStatus: 'pending',
-        dueDate: '',
-        notes: ''
-      });
-    }
-  }, [shipment]);
-
+  useEffect(() => { if (shipment) setFormData({ type: 'transport', description: '', amount: '', currency: 'USD', paidBy: 'customer', paidStatus: 'pending', dueDate: '', notes: '' }); }, [shipment]);
   if (!isOpen || !shipment) return null;
 
-  const typeOptions = [
-    { value: 'transport', label: 'Transport' },
-    { value: 'warehouse', label: 'Warehouse' },
-    { value: 'customs', label: 'Customs' },
-    { value: 'insurance', label: 'Insurance' },
-    { value: 'documentation', label: 'Documentation' },
-    { value: 'fuel_surcharge', label: 'Fuel Surcharge' },
-    { value: 'handling', label: 'Handling' },
-    { value: 'other', label: 'Other' }
-  ];
-
-  const currencyOptions = [
-    { value: 'USD', label: 'USD' },
-    { value: 'EUR', label: 'EUR' },
-    { value: 'GBP', label: 'GBP' },
-    { value: 'BDT', label: 'BDT' },
-    { value: 'INR', label: 'INR' },
-    { value: 'CNY', label: 'CNY' }
-  ];
-
-  const paidByOptions = [
-    { value: 'customer', label: 'Customer' },
-    { value: 'company', label: 'Company' },
-    { value: 'other', label: 'Other' }
-  ];
-
-  const paidStatusOptions = [
-    { value: 'pending', label: 'Pending' },
-    { value: 'paid', label: 'Paid' },
-    { value: 'overdue', label: 'Overdue' },
-    { value: 'waived', label: 'Waived' }
-  ];
+  const typeOptions = [{ value: 'transport', label: 'Transport' }, { value: 'warehouse', label: 'Warehouse' }, { value: 'customs', label: 'Customs' }, { value: 'insurance', label: 'Insurance' }, { value: 'documentation', label: 'Documentation' }, { value: 'fuel_surcharge', label: 'Fuel Surcharge' }, { value: 'handling', label: 'Handling' }, { value: 'other', label: 'Other' }];
+  const currencyOptions = [{ value: 'USD', label: 'USD' }, { value: 'EUR', label: 'EUR' }, { value: 'GBP', label: 'GBP' }, { value: 'BDT', label: 'BDT' }, { value: 'INR', label: 'INR' }, { value: 'CNY', label: 'CNY' }];
+  const paidByOptions = [{ value: 'customer', label: 'Customer' }, { value: 'company', label: 'Company' }, { value: 'other', label: 'Other' }];
+  const paidStatusOptions = [{ value: 'pending', label: 'Pending' }, { value: 'paid', label: 'Paid' }, { value: 'overdue', label: 'Overdue' }, { value: 'waived', label: 'Waived' }];
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.type || !formData.amount) {
-      toast.warning('Type and amount are required');
-      return;
-    }
-
+    if (!formData.type || !formData.amount) { toast.warning('Type and amount are required'); return; }
     setLoading(true);
-    try {
-      await onAdd(shipment._id, formData);
-      onClose();
-    } catch (error) {
-      // Error handled in parent
-    } finally {
-      setLoading(false);
-    }
+    try { await onAdd(shipment._id, formData); onClose(); } finally { setLoading(false); }
   };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Add Shipment Cost" size="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <Select
-            label="Cost Type"
-            value={formData.type}
-            onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-            options={typeOptions}
-            placeholder="Select type"
-            required
-            icon={Tag}
-          />
-
-          <Select
-            label="Currency"
-            value={formData.currency}
-            onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-            options={currencyOptions}
-            placeholder="Select currency"
-            required
-            icon={DollarSign}
-          />
-        </div>
-
-        <Input
-          label="Amount"
-          type="number"
-          step="0.01"
-          value={formData.amount}
-          onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-          placeholder="0.00"
-          required
-          icon={DollarSign}
-        />
-
-        <Input
-          label="Description"
-          value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          placeholder="e.g., Ocean freight charges"
-          icon={FileText}
-        />
-
-        <div className="grid grid-cols-2 gap-4">
-          <Select
-            label="Paid By"
-            value={formData.paidBy}
-            onChange={(e) => setFormData({ ...formData, paidBy: e.target.value })}
-            options={paidByOptions}
-            placeholder="Select payer"
-            icon={User}
-          />
-
-          <Select
-            label="Payment Status"
-            value={formData.paidStatus}
-            onChange={(e) => setFormData({ ...formData, paidStatus: e.target.value })}
-            options={paidStatusOptions}
-            placeholder="Select status"
-            icon={CheckCircle}
-          />
-        </div>
-
-        <Input
-          type="date"
-          label="Due Date"
-          value={formData.dueDate}
-          onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-          icon={Calendar}
-        />
-
-        <TextArea
-          label="Notes"
-          value={formData.notes}
-          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          placeholder="Additional notes..."
-          rows={3}
-        />
-
-        <div className="flex justify-end space-x-3 pt-4">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            isLoading={loading}
-          >
-            Add Cost
-          </Button>
-        </div>
+        <div className="grid grid-cols-2 gap-4"><Select label="Cost Type" value={formData.type} onChange={(e) => setFormData({ ...formData, type: e.target.value })} options={typeOptions} placeholder="Select type" required icon={Tag} /><Select label="Currency" value={formData.currency} onChange={(e) => setFormData({ ...formData, currency: e.target.value })} options={currencyOptions} placeholder="Select currency" required icon={DollarSign} /></div>
+        <Input label="Amount" type="number" step="0.01" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} placeholder="0.00" required icon={DollarSign} />
+        <Input label="Description" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="e.g., Ocean freight charges" icon={FileText} />
+        <div className="grid grid-cols-2 gap-4"><Select label="Paid By" value={formData.paidBy} onChange={(e) => setFormData({ ...formData, paidBy: e.target.value })} options={paidByOptions} placeholder="Select payer" icon={User} /><Select label="Payment Status" value={formData.paidStatus} onChange={(e) => setFormData({ ...formData, paidStatus: e.target.value })} options={paidStatusOptions} placeholder="Select status" icon={CheckCircle} /></div>
+        <Input type="date" label="Due Date" value={formData.dueDate} onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })} icon={Calendar} />
+        <TextArea label="Notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Additional notes..." rows={3} />
+        <div className="flex justify-end space-x-3 pt-4"><Button type="button" variant="ghost" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" isLoading={loading}>Add Cost</Button></div>
       </form>
     </Modal>
   );
@@ -1330,142 +1399,35 @@ const CostModal = ({ isOpen, onClose, shipment, onAdd }) => {
 
 // Document Upload Modal
 const DocumentModal = ({ isOpen, onClose, shipment, onUpload }) => {
-  const [formData, setFormData] = useState({
-    type: 'commercial_invoice',
-    title: '',
-    file: null,
-    notes: ''
-  });
+  const [formData, setFormData] = useState({ type: 'commercial_invoice', title: '', file: null, notes: '' });
   const [loading, setLoading] = useState(false);
   const fileInputRef = React.useRef(null);
 
-  useEffect(() => {
-    if (shipment) {
-      setFormData({
-        type: 'commercial_invoice',
-        title: '',
-        file: null,
-        notes: ''
-      });
-    }
-  }, [shipment]);
-
+  useEffect(() => { if (shipment) setFormData({ type: 'commercial_invoice', title: '', file: null, notes: '' }); }, [shipment]);
   if (!isOpen || !shipment) return null;
 
-  const documentTypeOptions = [
-    { value: 'commercial_invoice', label: 'Commercial Invoice' },
-    { value: 'packing_list', label: 'Packing List' },
-    { value: 'bill_of_lading', label: 'Bill of Lading' },
-    { value: 'air_waybill', label: 'Air Waybill' },
-    { value: 'certificate_of_origin', label: 'Certificate of Origin' },
-    { value: 'insurance_certificate', label: 'Insurance Certificate' },
-    { value: 'customs_declaration', label: 'Customs Declaration' },
-    { value: 'delivery_receipt', label: 'Delivery Receipt' },
-    { value: 'other', label: 'Other' }
-  ];
+  const documentTypeOptions = [{ value: 'commercial_invoice', label: 'Commercial Invoice' }, { value: 'packing_list', label: 'Packing List' }, { value: 'bill_of_lading', label: 'Bill of Lading' }, { value: 'air_waybill', label: 'Air Waybill' }, { value: 'certificate_of_origin', label: 'Certificate of Origin' }, { value: 'insurance_certificate', label: 'Insurance Certificate' }, { value: 'customs_declaration', label: 'Customs Declaration' }, { value: 'delivery_receipt', label: 'Delivery Receipt' }, { value: 'other', label: 'Other' }];
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setFormData({ ...formData, file, title: formData.title || file.name });
-    }
-  };
-
+  const handleFileChange = (e) => { const file = e.target.files[0]; if (file) setFormData({ ...formData, file, title: formData.title || file.name }); };
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.type || !formData.title || !formData.file) {
-      toast.warning('Type, title and file are required');
-      return;
-    }
-
+    if (!formData.type || !formData.title || !formData.file) { toast.warning('Type, title and file are required'); return; }
     setLoading(true);
     try {
-      // Create FormData for file upload
       const uploadData = new FormData();
-      uploadData.append('type', formData.type);
-      uploadData.append('title', formData.title);
-      uploadData.append('file', formData.file);
-      uploadData.append('notes', formData.notes);
-      
-      await onUpload(shipment._id, uploadData);
-      onClose();
-    } catch (error) {
-      // Error handled in parent
-    } finally {
-      setLoading(false);
-    }
+      uploadData.append('type', formData.type); uploadData.append('title', formData.title); uploadData.append('file', formData.file); uploadData.append('notes', formData.notes);
+      await onUpload(shipment._id, uploadData); onClose();
+    } finally { setLoading(false); }
   };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Upload Document" size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Select
-          label="Document Type"
-          value={formData.type}
-          onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-          options={documentTypeOptions}
-          placeholder="Select type"
-          required
-          icon={FileText}
-        />
-
-        <Input
-          label="Document Title"
-          value={formData.title}
-          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-          placeholder="e.g., Commercial Invoice - Shipment #123"
-          required
-          icon={Tag}
-        />
-
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700">
-            File <span className="text-red-500">*</span>
-          </label>
-          <div 
-            className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-[#E67E22] transition-colors"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              className="hidden"
-            />
-            <Upload className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-            <p className="text-sm text-gray-600">
-              {formData.file ? formData.file.name : 'Click to upload or drag and drop'}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              PDF, Images, Excel, Word (Max 10MB)
-            </p>
-          </div>
-        </div>
-
-        <TextArea
-          label="Notes"
-          value={formData.notes}
-          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          placeholder="Additional notes about this document..."
-          rows={3}
-        />
-
-        <div className="flex justify-end space-x-3 pt-4">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            isLoading={loading}
-          >
-            Upload Document
-          </Button>
-        </div>
+        <Select label="Document Type" value={formData.type} onChange={(e) => setFormData({ ...formData, type: e.target.value })} options={documentTypeOptions} placeholder="Select type" required icon={FileText} />
+        <Input label="Document Title" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} placeholder="e.g., Commercial Invoice - Shipment #123" required icon={Tag} />
+        <div className="space-y-1"><label className="block text-sm font-medium text-gray-700">File <span className="text-red-500">*</span></label><div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-[#E67E22] transition-colors" onClick={() => fileInputRef.current?.click()}><input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" /><Upload className="h-8 w-8 mx-auto text-gray-400 mb-2" /><p className="text-sm text-gray-600">{formData.file ? formData.file.name : 'Click to upload or drag and drop'}</p><p className="text-xs text-gray-500 mt-1">PDF, Images, Excel, Word (Max 10MB)</p></div></div>
+        <TextArea label="Notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Additional notes about this document..." rows={3} />
+        <div className="flex justify-end space-x-3 pt-4"><Button type="button" variant="ghost" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" isLoading={loading}>Upload Document</Button></div>
       </form>
     </Modal>
   );
@@ -1473,109 +1435,32 @@ const DocumentModal = ({ isOpen, onClose, shipment, onUpload }) => {
 
 // Add Note Modal
 const NoteModal = ({ isOpen, onClose, shipment, onAdd }) => {
-  const [formData, setFormData] = useState({
-    type: 'internal',
-    note: '',
-    priority: 'normal'
-  });
+  const [formData, setFormData] = useState({ type: 'internal', note: '', priority: 'normal' });
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (shipment) {
-      setFormData({
-        type: 'internal',
-        note: '',
-        priority: 'normal'
-      });
-    }
-  }, [shipment]);
-
+  useEffect(() => { if (shipment) setFormData({ type: 'internal', note: '', priority: 'normal' }); }, [shipment]);
   if (!isOpen || !shipment) return null;
 
-  const typeOptions = [
-    { value: 'internal', label: 'Internal Note' },
-    { value: 'customer', label: 'Customer Note' }
-  ];
-
-  const priorityOptions = [
-    { value: 'low', label: 'Low' },
-    { value: 'normal', label: 'Normal' },
-    { value: 'high', label: 'High' },
-    { value: 'urgent', label: 'Urgent' }
-  ];
+  const typeOptions = [{ value: 'internal', label: 'Internal Note' }, { value: 'customer', label: 'Customer Note' }];
+  const priorityOptions = [{ value: 'low', label: 'Low' }, { value: 'normal', label: 'Normal' }, { value: 'high', label: 'High' }, { value: 'urgent', label: 'Urgent' }];
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.note) {
-      toast.warning('Note is required');
-      return;
-    }
-
+    if (!formData.note) { toast.warning('Note is required'); return; }
     setLoading(true);
     try {
-      if (formData.type === 'internal') {
-        await onAdd.internalNote(shipment._id, formData);
-      } else {
-        await onAdd.customerNote(shipment._id, formData);
-      }
+      if (formData.type === 'internal') await onAdd.internalNote(shipment._id, formData);
+      else await onAdd.customerNote(shipment._id, formData);
       onClose();
-    } catch (error) {
-      // Error handled in parent
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Add Note" size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <Select
-            label="Note Type"
-            value={formData.type}
-            onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-            options={typeOptions}
-            placeholder="Select type"
-            required
-            icon={MessageSquare}
-          />
-
-          <Select
-            label="Priority"
-            value={formData.priority}
-            onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-            options={priorityOptions}
-            placeholder="Select priority"
-            required
-            icon={AlertCircle}
-          />
-        </div>
-
-        <TextArea
-          label="Note"
-          value={formData.note}
-          onChange={(e) => setFormData({ ...formData, note: e.target.value })}
-          placeholder="Write your note here..."
-          rows={4}
-          required
-        />
-
-        <div className="flex justify-end space-x-3 pt-4">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            isLoading={loading}
-          >
-            Add Note
-          </Button>
-        </div>
+        <div className="grid grid-cols-2 gap-4"><Select label="Note Type" value={formData.type} onChange={(e) => setFormData({ ...formData, type: e.target.value })} options={typeOptions} placeholder="Select type" required icon={MessageSquare} /><Select label="Priority" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value })} options={priorityOptions} placeholder="Select priority" required icon={AlertCircle} /></div>
+        <TextArea label="Note" value={formData.note} onChange={(e) => setFormData({ ...formData, note: e.target.value })} placeholder="Write your note here..." rows={4} required />
+        <div className="flex justify-end space-x-3 pt-4"><Button type="button" variant="ghost" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" isLoading={loading}>Add Note</Button></div>
       </form>
     </Modal>
   );
@@ -1583,144 +1468,34 @@ const NoteModal = ({ isOpen, onClose, shipment, onAdd }) => {
 
 // Warehouse Actions Modal
 const WarehouseModal = ({ isOpen, onClose, shipment, onAction }) => {
-  const [formData, setFormData] = useState({
-    action: 'receive',
-    location: '',
-    receivedBy: '',
-    verifiedBy: '',
-    condition: 'good',
-    notes: ''
-  });
+  const [formData, setFormData] = useState({ action: 'receive', location: '', receivedBy: '', verifiedBy: '', condition: 'good', notes: '' });
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (shipment) {
-      setFormData({
-        action: 'receive',
-        location: '',
-        receivedBy: '',
-        verifiedBy: '',
-        condition: 'good',
-        notes: ''
-      });
-    }
-  }, [shipment]);
-
+  useEffect(() => { if (shipment) setFormData({ action: 'receive', location: '', receivedBy: '', verifiedBy: '', condition: 'good', notes: '' }); }, [shipment]);
   if (!isOpen || !shipment) return null;
 
-  const actionOptions = [
-    { value: 'receive', label: 'Receive at Warehouse' },
-    { value: 'process', label: 'Process/Consolidate' },
-    { value: 'load', label: 'Load for Shipping' }
-  ];
-
-  const conditionOptions = [
-    { value: 'excellent', label: 'Excellent' },
-    { value: 'good', label: 'Good' },
-    { value: 'fair', label: 'Fair' },
-    { value: 'damaged', label: 'Damaged' },
-    { value: 'with_exception', label: 'With Exception' }
-  ];
+  const actionOptions = [{ value: 'receive', label: 'Receive at Warehouse' }, { value: 'process', label: 'Process/Consolidate' }, { value: 'load', label: 'Load for Shipping' }];
+  const conditionOptions = [{ value: 'excellent', label: 'Excellent' }, { value: 'good', label: 'Good' }, { value: 'fair', label: 'Fair' }, { value: 'damaged', label: 'Damaged' }, { value: 'with_exception', label: 'With Exception' }];
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (formData.action === 'receive' && (!formData.location || !formData.receivedBy)) {
-      toast.warning('Location and receiver are required');
-      return;
-    }
-
+    if (formData.action === 'receive' && (!formData.location || !formData.receivedBy)) { toast.warning('Location and receiver are required'); return; }
     setLoading(true);
     try {
-      if (formData.action === 'receive') {
-        await onAction.receive(shipment._id, formData);
-      } else if (formData.action === 'process') {
-        await onAction.process(shipment._id, formData);
-      }
+      if (formData.action === 'receive') await onAction.receive(shipment._id, formData);
+      else if (formData.action === 'process') await onAction.process(shipment._id, formData);
       onClose();
-    } catch (error) {
-      // Error handled in parent
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Warehouse Operations" size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Select
-          label="Action"
-          value={formData.action}
-          onChange={(e) => setFormData({ ...formData, action: e.target.value })}
-          options={actionOptions}
-          placeholder="Select action"
-          required
-          icon={Building2}
-        />
-
-        {formData.action === 'receive' && (
-          <>
-            <Input
-              label="Warehouse Location"
-              value={formData.location}
-              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              placeholder="e.g., Dhaka Main Warehouse"
-              required
-              icon={MapPin}
-            />
-
-            <Input
-              label="Received By"
-              value={formData.receivedBy}
-              onChange={(e) => setFormData({ ...formData, receivedBy: e.target.value })}
-              placeholder="Name of warehouse staff"
-              required
-              icon={User}
-            />
-
-            <Input
-              label="Verified By"
-              value={formData.verifiedBy}
-              onChange={(e) => setFormData({ ...formData, verifiedBy: e.target.value })}
-              placeholder="Name of verifying officer"
-              icon={UserCog}
-            />
-          </>
-        )}
-
-        <Select
-          label="Condition"
-          value={formData.condition}
-          onChange={(e) => setFormData({ ...formData, condition: e.target.value })}
-          options={conditionOptions}
-          placeholder="Select condition"
-          icon={Shield}
-        />
-
-        <TextArea
-          label="Notes"
-          value={formData.notes}
-          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          placeholder="Additional notes..."
-          rows={3}
-        />
-
-        <div className="flex justify-end space-x-3 pt-4">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            isLoading={loading}
-          >
-            Process
-          </Button>
-        </div>
+        <Select label="Action" value={formData.action} onChange={(e) => setFormData({ ...formData, action: e.target.value })} options={actionOptions} placeholder="Select action" required icon={Building2} />
+        {formData.action === 'receive' && (<><Input label="Warehouse Location" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} placeholder="e.g., Dhaka Main Warehouse" required icon={MapPin} /><Input label="Received By" value={formData.receivedBy} onChange={(e) => setFormData({ ...formData, receivedBy: e.target.value })} placeholder="Name of warehouse staff" required icon={User} /><Input label="Verified By" value={formData.verifiedBy} onChange={(e) => setFormData({ ...formData, verifiedBy: e.target.value })} placeholder="Name of verifying officer" icon={UserCog} /></>)}
+        <Select label="Condition" value={formData.condition} onChange={(e) => setFormData({ ...formData, condition: e.target.value })} options={conditionOptions} placeholder="Select condition" icon={Shield} />
+        <TextArea label="Notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Additional notes..." rows={3} />
+        <div className="flex justify-end space-x-3 pt-4"><Button type="button" variant="ghost" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" isLoading={loading}>Process</Button></div>
       </form>
     </Modal>
   );
@@ -1728,102 +1503,28 @@ const WarehouseModal = ({ isOpen, onClose, shipment, onAction }) => {
 
 // Cancel Shipment Modal
 const CancelModal = ({ isOpen, onClose, shipment, onCancel }) => {
-  const [formData, setFormData] = useState({
-    reason: '',
-    notes: ''
-  });
+  const [formData, setFormData] = useState({ reason: '', notes: '' });
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (shipment) {
-      setFormData({
-        reason: '',
-        notes: ''
-      });
-    }
-  }, [shipment]);
-
+  useEffect(() => { if (shipment) setFormData({ reason: '', notes: '' }); }, [shipment]);
   if (!isOpen || !shipment) return null;
 
-  const reasonOptions = [
-    { value: 'customer_request', label: 'Customer Request' },
-    { value: 'operational_issues', label: 'Operational Issues' },
-    { value: 'payment_issues', label: 'Payment Issues' },
-    { value: 'duplicate', label: 'Duplicate Shipment' },
-    { value: 'incorrect_details', label: 'Incorrect Details' },
-    { value: 'delay_unacceptable', label: 'Delay Unacceptable' },
-    { value: 'other', label: 'Other' }
-  ];
+  const reasonOptions = [{ value: 'customer_request', label: 'Customer Request' }, { value: 'operational_issues', label: 'Operational Issues' }, { value: 'payment_issues', label: 'Payment Issues' }, { value: 'duplicate', label: 'Duplicate Shipment' }, { value: 'incorrect_details', label: 'Incorrect Details' }, { value: 'delay_unacceptable', label: 'Delay Unacceptable' }, { value: 'other', label: 'Other' }];
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.reason) {
-      toast.warning('Please select a cancellation reason');
-      return;
-    }
-
+    if (!formData.reason) { toast.warning('Please select a cancellation reason'); return; }
     setLoading(true);
-    try {
-      await onCancel(shipment._id, formData);
-      onClose();
-    } catch (error) {
-      // Error handled in parent
-    } finally {
-      setLoading(false);
-    }
+    try { await onCancel(shipment._id, formData); onClose(); } finally { setLoading(false); }
   };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Cancel Shipment" size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="bg-yellow-50 p-4 rounded-lg">
-          <div className="flex items-start">
-            <AlertTriangle className="h-5 w-5 text-yellow-600 mr-3 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-yellow-800">
-                Are you sure you want to cancel this shipment?
-              </p>
-              <p className="text-xs text-yellow-700 mt-1">
-                This action cannot be undone. The shipment status will be changed to cancelled.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <Select
-          label="Cancellation Reason"
-          value={formData.reason}
-          onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-          options={reasonOptions}
-          placeholder="Select reason"
-          required
-          icon={XCircle}
-        />
-
-        <TextArea
-          label="Additional Notes"
-          value={formData.notes}
-          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          placeholder="Provide additional details..."
-          rows={3}
-        />
-
-        <div className="flex justify-end space-x-3 pt-4">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onClose}
-          >
-            No, Keep Shipment
-          </Button>
-          <Button
-            type="submit"
-            variant="danger"
-            isLoading={loading}
-          >
-            Yes, Cancel Shipment
-          </Button>
-        </div>
+        <div className="bg-yellow-50 p-4 rounded-lg"><div className="flex items-start"><AlertTriangle className="h-5 w-5 text-yellow-600 mr-3 flex-shrink-0 mt-0.5" /><div><p className="text-sm font-medium text-yellow-800">Are you sure you want to cancel this shipment?</p><p className="text-xs text-yellow-700 mt-1">This action cannot be undone. The shipment status will be changed to cancelled.</p></div></div></div>
+        <Select label="Cancellation Reason" value={formData.reason} onChange={(e) => setFormData({ ...formData, reason: e.target.value })} options={reasonOptions} placeholder="Select reason" required icon={XCircle} />
+        <TextArea label="Additional Notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Provide additional details..." rows={3} />
+        <div className="flex justify-end space-x-3 pt-4"><Button type="button" variant="ghost" onClick={onClose}>No, Keep Shipment</Button><Button type="submit" variant="danger" isLoading={loading}>Yes, Cancel Shipment</Button></div>
       </form>
     </Modal>
   );
@@ -1838,44 +1539,9 @@ const ShipmentDetailsModal = ({ isOpen, onClose, shipment }) => {
   const [trackingData, setTrackingData] = useState(null);
   const [trackingLoading, setTrackingLoading] = useState(false);
 
-  useEffect(() => {
-    if (isOpen && shipment) {
-      fetchShipmentData();
-      fetchTrackingData();
-    }
-  }, [isOpen, shipment]);
-
-  const fetchTrackingData = async () => {
-    if (!shipment?.trackingNumber) return;
-    setTrackingLoading(true);
-    try {
-      const result = await trackShipmentByNumber(shipment.trackingNumber);
-      if (result.success) {
-        setTrackingData(result.data);
-      }
-    } catch (error) {
-      console.error('Tracking fetch error:', error);
-    } finally {
-      setTrackingLoading(false);
-    }
-  };
-
-  const fetchShipmentData = async () => {
-    setLoading(true);
-    try {
-      const [costsRes, timelineRes] = await Promise.all([
-        getShipmentCosts(shipment._id),
-        getShipmentTimeline(shipment._id)
-      ]);
-      
-      if (costsRes.success) setCosts(costsRes.data || []);
-      if (timelineRes.success) setTimeline(timelineRes.data || []);
-    } catch (error) {
-      toast.error('Failed to fetch shipment details');
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => { if (isOpen && shipment) { fetchShipmentData(); fetchTrackingData(); } }, [isOpen, shipment]);
+  const fetchTrackingData = async () => { if (!shipment?.trackingNumber) return; setTrackingLoading(true); try { const result = await trackShipmentByNumber(shipment.trackingNumber); if (result.success) setTrackingData(result.data); } catch (error) { console.error('Tracking fetch error:', error); } finally { setTrackingLoading(false); } };
+  const fetchShipmentData = async () => { setLoading(true); try { const [costsRes, timelineRes] = await Promise.all([getShipmentCosts(shipment._id), getShipmentTimeline(shipment._id)]); if (costsRes.success) setCosts(costsRes.data || []); if (timelineRes.success) setTimeline(timelineRes.data || []); } catch (error) { toast.error('Failed to fetch shipment details'); } finally { setLoading(false); } };
 
   if (!isOpen || !shipment) return null;
 
@@ -1885,469 +1551,52 @@ const ShipmentDetailsModal = ({ isOpen, onClose, shipment }) => {
   const onTrack = isOnTrack(shipment.transport?.estimatedArrival, shipment.actualDeliveryDate, shipment.status);
   const progress = trackingData?.progress || getShipmentProgress(shipment.status);
   const currentLocation = trackingData?.currentLocation || 'In Transit';
-
-  const tabs = [
-    { id: 'details', label: 'Details', icon: Package },
-    { id: 'packages', label: 'Packages', icon: Box },
-    { id: 'transport', label: 'Transport', icon: Truck },
-    { id: 'costs', label: 'Costs', icon: DollarSign },
-    { id: 'timeline', label: 'Timeline', icon: Activity }
-  ];
+  const tabs = [{ id: 'details', label: 'Details', icon: Package }, { id: 'packages', label: 'Packages', icon: Box }, { id: 'transport', label: 'Transport', icon: Truck },  { id: 'timeline', label: 'Timeline', icon: Activity }];
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Shipment Details" size="xl">
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h4 className="text-lg font-semibold text-gray-900">
-              #{shipment.shipmentNumber || shipment._id?.slice(-8).toUpperCase()}
-            </h4>
-            {shipment.trackingNumber && (
-              <p className="text-sm text-gray-500">
-                Tracking: {shipment.trackingNumber}
-              </p>
-            )}
-          </div>
-          <StatusBadge status={shipment.status} size="lg" />
-        </div>
-
-        {/* Current Status Section */}
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">Current Status</span>
-            <span className="text-xs text-gray-500">
-              Last updated: {trackingData?.lastUpdate ? formatShipmentDate(trackingData.lastUpdate, 'short') : formatShipmentDate(shipment.updatedAt, 'short')}
-            </span>
-          </div>
-          <div className="flex items-center space-x-2 mb-3">
-            <MapPin className="h-4 w-4 text-gray-400" />
-            <span className="text-sm text-gray-600">{currentLocation}</span>
-          </div>
-          <ProgressBar progress={progress} showLabel />
-        </div>
-
-        {/* Tabs */}
-        <div className="border-b border-gray-200">
-          <nav className="flex space-x-4 overflow-x-auto">
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors flex items-center whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? `border-[${COLORS.primary}] text-[${COLORS.primary}]`
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <tab.icon className="h-4 w-4 mr-2" />
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        {/* Tab Content */}
+        <div className="flex items-center justify-between"><div><h4 className="text-lg font-semibold text-gray-900">#{shipment.shipmentNumber || shipment._id?.slice(-8).toUpperCase()}</h4>{shipment.trackingNumber && <p className="text-sm text-gray-500">Tracking: {shipment.trackingNumber}</p>}</div><StatusBadge status={shipment.status} size="lg" /></div>
+        <div className="bg-gray-50 p-4 rounded-lg"><div className="flex items-center justify-between mb-2"><span className="text-sm font-medium text-gray-700">Current Status</span><span className="text-xs text-gray-500">Last updated: {trackingData?.lastUpdate ? formatShipmentDate(trackingData.lastUpdate, 'short') : formatShipmentDate(shipment.updatedAt, 'short')}</span></div><div className="flex items-center space-x-2 mb-3"><MapPin className="h-4 w-4 text-gray-400" /><span className="text-sm text-gray-600">{currentLocation}</span></div><ProgressBar progress={progress} showLabel /></div>
+        <div className="border-b border-gray-200"><nav className="flex space-x-4 overflow-x-auto">{tabs.map(tab => (<button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors flex items-center whitespace-nowrap ${activeTab === tab.id ? `border-[${COLORS.primary}] text-[${COLORS.primary}]` : 'border-transparent text-gray-500 hover:text-gray-700'}`}><tab.icon className="h-4 w-4 mr-2" />{tab.label}</button>))}</nav></div>
         <div className="min-h-[300px]">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin" style={{ color: COLORS.primary }} />
-              <span className="ml-2 text-sm text-gray-500">Loading details...</span>
-            </div>
-          ) : (
+          {loading ? <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" style={{ color: COLORS.primary }} /><span className="ml-2 text-sm text-gray-500">Loading details...</span></div> : (
             <>
               {activeTab === 'details' && (
                 <div className="space-y-4">
-                  {/* Customer Info */}
-                  <div className="border rounded-lg p-4">
-                    <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-                      <User className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />
-                      Customer Information
-                    </h5>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs text-gray-500">Company Name</p>
-                        <p className="text-sm font-medium">
-                          {shipment.customerId?.companyName || 'N/A'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Contact Person</p>
-                        <p className="text-sm font-medium">
-                          {shipment.customerId?.firstName} {shipment.customerId?.lastName}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Email</p>
-                        <p className="text-sm font-medium">{shipment.customerId?.email || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Phone</p>
-                        <p className="text-sm font-medium">{shipment.customerId?.phone || 'N/A'}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Shipment Details */}
-                  <div className="border rounded-lg p-4">
-                    <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-                      <Package className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />
-                      Shipment Details
-                    </h5>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs text-gray-500">Origin</p>
-                        <p className="text-sm font-medium">{shipment.shipmentDetails?.origin || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Destination</p>
-                        <p className="text-sm font-medium">{shipment.shipmentDetails?.destination || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Mode</p>
-                        <ShipmentModeBadge mode={shipment.shipmentDetails?.shipmentType} />
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Payment Terms</p>
-                        <p className="text-sm font-medium">{shipment.paymentTerms || 'N/A'}</p>
-                      </div>
-                    </div>
-                    {shipment.specialInstructions && (
-                      <div className="mt-3">
-                        <p className="text-xs text-gray-500 mb-1">Special Instructions</p>
-                        <p className="text-sm text-gray-700 bg-gray-50 p-2 rounded">
-                          {shipment.specialInstructions}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Customs Info */}
-                  {shipment.customsInfo && (
-                    <div className="border rounded-lg p-4">
-                      <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-                        <Shield className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />
-                        Customs Information
-                      </h5>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-xs text-gray-500">Broker Name</p>
-                          <p className="text-sm font-medium">{shipment.customsInfo.brokerName || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Broker Contact</p>
-                          <p className="text-sm font-medium">{shipment.customsInfo.brokerContact || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Duties</p>
-                          <p className="text-sm font-medium">
-                            {shipment.customsInfo.dutiesPaid ? 'Prepaid' : 'To be paid'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  <div className="border rounded-lg p-4"><h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center"><User className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />Customer Information</h5><div className="grid grid-cols-2 gap-4"><div><p className="text-xs text-gray-500">Company Name</p><p className="text-sm font-medium">{shipment.customerId?.companyName || 'N/A'}</p></div><div><p className="text-xs text-gray-500">Contact Person</p><p className="text-sm font-medium">{shipment.customerId?.firstName} {shipment.customerId?.lastName}</p></div><div><p className="text-xs text-gray-500">Email</p><p className="text-sm font-medium">{shipment.customerId?.email || 'N/A'}</p></div><div><p className="text-xs text-gray-500">Phone</p><p className="text-sm font-medium">{shipment.customerId?.phone || 'N/A'}</p></div></div></div>
+                  <div className="border rounded-lg p-4"><h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center"><Package className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />Shipment Details</h5><div className="grid grid-cols-2 gap-4"><div><p className="text-xs text-gray-500">Origin</p><p className="text-sm font-medium">{shipment.shipmentDetails?.origin || 'N/A'}</p></div><div><p className="text-xs text-gray-500">Destination</p><p className="text-sm font-medium">{shipment.shipmentDetails?.destination || 'N/A'}</p></div><div><p className="text-xs text-gray-500">Mode</p><ShipmentModeBadge mode={shipment.shipmentDetails?.shipmentType} /></div><div><p className="text-xs text-gray-500">Payment Terms</p><p className="text-sm font-medium">{shipment.paymentTerms || 'N/A'}</p></div></div>{shipment.specialInstructions && <div className="mt-3"><p className="text-xs text-gray-500 mb-1">Special Instructions</p><p className="text-sm text-gray-700 bg-gray-50 p-2 rounded">{shipment.specialInstructions}</p></div>}</div>
+                  {shipment.customsInfo && <div className="border rounded-lg p-4"><h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center"><Shield className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />Customs Information</h5><div className="grid grid-cols-2 gap-4"><div><p className="text-xs text-gray-500">Broker Name</p><p className="text-sm font-medium">{shipment.customsInfo.brokerName || 'N/A'}</p></div><div><p className="text-xs text-gray-500">Broker Contact</p><p className="text-sm font-medium">{shipment.customsInfo.brokerContact || 'N/A'}</p></div><div><p className="text-xs text-gray-500">Duties</p><p className="text-sm font-medium">{shipment.customsInfo.dutiesPaid ? 'Prepaid' : 'To be paid'}</p></div></div></div>}
                 </div>
               )}
-
               {activeTab === 'packages' && (
                 <div className="space-y-4">
-                  {/* Package Summary */}
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="bg-gray-50 p-4 rounded-lg text-center">
-                      <p className="text-xs text-gray-500">Total Packages</p>
-                      <p className="text-2xl font-semibold" style={{ color: COLORS.primary }}>
-                        {shipment.packages?.length || 0}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-lg text-center">
-                      <p className="text-xs text-gray-500">Total Weight</p>
-                      <p className="text-2xl font-semibold" style={{ color: COLORS.secondary }}>
-                        {formatWeight(totalWeight)}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-lg text-center">
-                      <p className="text-xs text-gray-500">Total Volume</p>
-                      <p className="text-2xl font-semibold" style={{ color: COLORS.success }}>
-                        {formatVolume(totalVolume)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Packages Table */}
-                  {shipment.packages && shipment.packages.length > 0 ? (
-                    <div className="border rounded-lg overflow-hidden">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Type</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Qty</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Weight</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Volume</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Dimensions</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Description</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200">
-                          {shipment.packages.map((pkg, index) => (
-                            <tr key={index}>
-                              <td className="px-4 py-2 text-sm">{pkg.packageType}</td>
-                              <td className="px-4 py-2 text-sm">{pkg.quantity}</td>
-                              <td className="px-4 py-2 text-sm">{formatWeight(pkg.weight)}</td>
-                              <td className="px-4 py-2 text-sm">{formatVolume(pkg.volume)}</td>
-                              <td className="px-4 py-2 text-sm">
-                                {pkg.length && pkg.width && pkg.height 
-                                  ? `${pkg.length}×${pkg.width}×${pkg.height} cm`
-                                  : 'N/A'}
-                              </td>
-                              <td className="px-4 py-2 text-sm text-gray-500">
-                                {pkg.description || '-'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-500 text-center py-4">No package details available</p>
-                  )}
+                  <div className="grid grid-cols-3 gap-4"><div className="bg-gray-50 p-4 rounded-lg text-center"><p className="text-xs text-gray-500">Total Packages</p><p className="text-2xl font-semibold" style={{ color: COLORS.primary }}>{shipment.packages?.length || 0}</p></div><div className="bg-gray-50 p-4 rounded-lg text-center"><p className="text-xs text-gray-500">Total Weight</p><p className="text-2xl font-semibold" style={{ color: COLORS.secondary }}>{formatWeight(totalWeight)}</p></div><div className="bg-gray-50 p-4 rounded-lg text-center"><p className="text-xs text-gray-500">Total Volume</p><p className="text-2xl font-semibold" style={{ color: COLORS.success }}>{formatVolume(totalVolume)}</p></div></div>
+                  {shipment.packages && shipment.packages.length > 0 ? <div className="border rounded-lg overflow-hidden"><table className="min-w-full divide-y divide-gray-200"><thead className="bg-gray-50"><tr><th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Type</th><th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Qty</th><th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Weight</th><th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Volume</th><th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Dimensions</th><th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Description</th></tr></thead><tbody className="divide-y divide-gray-200">{shipment.packages.map((pkg, index) => (<tr key={index}><td className="px-4 py-2 text-sm">{pkg.packageType}</td><td className="px-4 py-2 text-sm">{pkg.quantity}</td><td className="px-4 py-2 text-sm">{formatWeight(pkg.weight)}</td><td className="px-4 py-2 text-sm">{formatVolume(pkg.volume)}</td><td className="px-4 py-2 text-sm">{pkg.length && pkg.width && pkg.height ? `${pkg.length}×${pkg.width}×${pkg.height} cm` : 'N/A'}</td><td className="px-4 py-2 text-sm text-gray-500">{pkg.description || '-'}</td></tr>))}</tbody></table></div> : <p className="text-sm text-gray-500 text-center py-4">No package details available</p>}
                 </div>
               )}
-
               {activeTab === 'transport' && (
                 <div className="space-y-4">
-                  {/* Transport Info */}
-                  <div className="border rounded-lg p-4">
-                    <h5 className="text-sm font-medium text-gray-700 mb-3">Transport Details</h5>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs text-gray-500">Carrier Name</p>
-                        <p className="text-sm font-medium">{shipment.transport?.carrierName || 'Not assigned'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Route</p>
-                        <p className="text-sm font-medium">{shipment.transport?.route || 'Direct'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Vessel/Flight No.</p>
-                        <p className="text-sm font-medium">{shipment.transport?.vesselName || shipment.transport?.flightNumber || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Container/Seal No.</p>
-                        <p className="text-sm font-medium">
-                          {shipment.transport?.containerNumber || 'N/A'} / {shipment.transport?.sealNumber || 'N/A'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Dates */}
-                  <div className="border rounded-lg p-4">
-                    <h5 className="text-sm font-medium text-gray-700 mb-3">Schedule</h5>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs text-gray-500">Estimated Departure</p>
-                        <p className="text-sm font-medium">
-                          {shipment.transport?.estimatedDeparture 
-                            ? formatShipmentDate(shipment.transport.estimatedDeparture, 'short')
-                            : 'Not set'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Estimated Arrival</p>
-                        <p className="text-sm font-medium">
-                          {shipment.transport?.estimatedArrival 
-                            ? formatShipmentDate(shipment.transport.estimatedArrival, 'short')
-                            : 'Not set'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Actual Departure</p>
-                        <p className="text-sm font-medium">
-                          {shipment.transport?.actualDeparture 
-                            ? formatShipmentDate(shipment.transport.actualDeparture, 'short')
-                            : 'Not departed'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Actual Arrival</p>
-                        <p className="text-sm font-medium">
-                          {shipment.actualDeliveryDate 
-                            ? formatShipmentDate(shipment.actualDeliveryDate, 'short')
-                            : 'Not arrived'}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    {shipment.transport?.estimatedArrival && !shipment.actualDeliveryDate && (
-                      <div className="mt-4 bg-gray-50 rounded-lg p-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-gray-600">Days in Transit:</span>
-                          <span className="text-sm font-medium">{daysInTransit} days</span>
-                        </div>
-                        <div className="flex items-center justify-between mt-2">
-                          <span className="text-xs text-gray-600">On Track:</span>
-                          <span className={`text-sm font-medium ${onTrack ? 'text-green-600' : 'text-red-600'}`}>
-                            {onTrack ? 'Yes' : 'Delayed'}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  <div className="border rounded-lg p-4"><h5 className="text-sm font-medium text-gray-700 mb-3">Transport Details</h5><div className="grid grid-cols-2 gap-4"><div><p className="text-xs text-gray-500">Carrier Name</p><p className="text-sm font-medium">{shipment.transport?.carrierName || 'Not assigned'}</p></div><div><p className="text-xs text-gray-500">Route</p><p className="text-sm font-medium">{shipment.transport?.route || 'Direct'}</p></div><div><p className="text-xs text-gray-500">Vessel/Flight No.</p><p className="text-sm font-medium">{shipment.transport?.vesselName || shipment.transport?.flightNumber || 'N/A'}</p></div><div><p className="text-xs text-gray-500">Container/Seal No.</p><p className="text-sm font-medium">{shipment.transport?.containerNumber || 'N/A'} / {shipment.transport?.sealNumber || 'N/A'}</p></div></div></div>
+                  <div className="border rounded-lg p-4"><h5 className="text-sm font-medium text-gray-700 mb-3">Schedule</h5><div className="grid grid-cols-2 gap-4"><div><p className="text-xs text-gray-500">Estimated Departure</p><p className="text-sm font-medium">{shipment.transport?.estimatedDeparture ? formatShipmentDate(shipment.transport.estimatedDeparture, 'short') : 'Not set'}</p></div><div><p className="text-xs text-gray-500">Estimated Arrival</p><p className="text-sm font-medium">{shipment.transport?.estimatedArrival ? formatShipmentDate(shipment.transport.estimatedArrival, 'short') : 'Not set'}</p></div><div><p className="text-xs text-gray-500">Actual Departure</p><p className="text-sm font-medium">{shipment.transport?.actualDeparture ? formatShipmentDate(shipment.transport.actualDeparture, 'short') : 'Not departed'}</p></div><div><p className="text-xs text-gray-500">Actual Arrival</p><p className="text-sm font-medium">{shipment.actualDeliveryDate ? formatShipmentDate(shipment.actualDeliveryDate, 'short') : 'Not arrived'}</p></div></div>{shipment.transport?.estimatedArrival && !shipment.actualDeliveryDate && (<div className="mt-4 bg-gray-50 rounded-lg p-3"><div className="flex items-center justify-between"><span className="text-xs text-gray-600">Days in Transit:</span><span className="text-sm font-medium">{daysInTransit} days</span></div><div className="flex items-center justify-between mt-2"><span className="text-xs text-gray-600">On Track:</span><span className={`text-sm font-medium ${onTrack ? 'text-green-600' : 'text-red-600'}`}>{onTrack ? 'Yes' : 'Delayed'}</span></div></div>)}</div>
                 </div>
               )}
-
-              {activeTab === 'costs' && (
+              {/* {activeTab === 'costs' && (
                 <div className="space-y-4">
-                  {/* Total Cost */}
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs text-green-600 mb-1">Total Shipment Cost</p>
-                        <p className="text-2xl font-bold" style={{ color: COLORS.success }}>
-                          {formatShipmentCurrency(shipment.totalCost)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Costs Table */}
-                  {costs.length > 0 ? (
-                    <div className="border rounded-lg overflow-hidden">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Type</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Description</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Amount</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Paid By</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200">
-                          {costs.map((cost, index) => (
-                            <tr key={index}>
-                              <td className="px-4 py-2 text-sm capitalize">{cost.type}</td>
-                              <td className="px-4 py-2 text-sm">{cost.description || '-'}</td>
-                              <td className="px-4 py-2 text-sm font-medium">
-                                {formatShipmentCurrency(cost.amount, cost.currency)}
-                              </td>
-                              <td className="px-4 py-2 text-sm capitalize">{cost.paidBy}</td>
-                              <td className="px-4 py-2">
-                                <span className={`px-2 py-1 text-xs rounded-full ${
-                                  cost.paidStatus === 'paid' ? 'bg-green-100 text-green-700' :
-                                  cost.paidStatus === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                                  'bg-red-100 text-red-700'
-                                }`}>
-                                  {cost.paidStatus}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-500 text-center py-4">No costs added yet</p>
-                  )}
-
-                  {/* Insurance Info */}
-                  {shipment.insurance?.required && (
-                    <div className="border rounded-lg p-4">
-                      <h5 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
-                        <Shield className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />
-                        Insurance
-                      </h5>
-                      <p className="text-sm">
-                        Coverage: {formatShipmentCurrency(shipment.insurance.coverageAmount, shipment.insurance.currency)}
-                      </p>
-                    </div>
-                  )}
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4"><div className="flex items-center justify-between"><div><p className="text-xs text-green-600 mb-1">Total Shipment Cost</p><p className="text-2xl font-bold" style={{ color: COLORS.success }}>{formatShipmentCurrency(shipment.totalCost)}</p></div></div></div>
+                  {costs.length > 0 ? <div className="border rounded-lg overflow-hidden"><table className="min-w-full divide-y divide-gray-200"><thead className="bg-gray-50"><tr><th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Type</th><th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Description</th><th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Amount</th><th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Paid By</th><th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Status</th></tr></thead><tbody className="divide-y divide-gray-200">{costs.map((cost, index) => (<tr key={index}><td className="px-4 py-2 text-sm capitalize">{cost.type}</td><td className="px-4 py-2 text-sm">{cost.description || '-'}</td><td className="px-4 py-2 text-sm font-medium">{formatShipmentCurrency(cost.amount, cost.currency)}</td><td className="px-4 py-2 text-sm capitalize">{cost.paidBy}</td><td className="px-4 py-2"><span className={`px-2 py-1 text-xs rounded-full ${cost.paidStatus === 'paid' ? 'bg-green-100 text-green-700' : cost.paidStatus === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{cost.paidStatus}</span></td></tr>))}</tbody></table></div> : <p className="text-sm text-gray-500 text-center py-4">No costs added yet</p>}
+                  {shipment.insurance?.required && <div className="border rounded-lg p-4"><h5 className="text-sm font-medium text-gray-700 mb-2 flex items-center"><Shield className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />Insurance</h5><p className="text-sm">Coverage: {formatShipmentCurrency(shipment.insurance.coverageAmount, shipment.insurance.currency)}</p></div>}
                 </div>
-              )}
-
+              )} */}
               {activeTab === 'timeline' && (
                 <div className="space-y-4">
-                  {trackingLoading || loading ? (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="h-6 w-6 animate-spin" style={{ color: COLORS.primary }} />
-                    </div>
-                  ) : (trackingData?.timeline?.length > 0 || timeline.length > 0) ? (
-                    <div className="relative">
-                      {(trackingData?.timeline || timeline).map((event, index) => (
-                        <div key={index} className="flex items-start space-x-3 mb-4">
-                          <div className="flex-shrink-0">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                              event.status === 'delivered' || event.status === 'completed' ? 'bg-green-100' :
-                              event.status === 'arrived_at_destination_port' ? 'bg-teal-100' :
-                              event.status === 'customs_cleared' ? 'bg-emerald-100' :
-                              event.status === 'out_for_delivery' ? 'bg-pink-100' :
-                              event.status === 'in_transit' ? 'bg-cyan-100' :
-                              event.type === 'status' ? 'bg-blue-100' :
-                              event.type === 'tracking' ? 'bg-green-100' :
-                              event.type === 'note' ? 'bg-purple-100' :
-                              event.type === 'cost' ? 'bg-yellow-100' :
-                              'bg-gray-100'
-                            }`}>
-                              {event.status === 'delivered' && <CheckCircleSolid className="h-4 w-4 text-green-600" />}
-                              {event.status === 'arrived_at_destination_port' && <Flag className="h-4 w-4 text-teal-600" />}
-                              {event.status === 'customs_cleared' && <Shield className="h-4 w-4 text-emerald-600" />}
-                              {event.status === 'out_for_delivery' && <Truck className="h-4 w-4 text-pink-600" />}
-                              {event.status === 'in_transit' && <Truck className="h-4 w-4 text-cyan-600" />}
-                              {event.type === 'status' && <Activity className="h-4 w-4 text-blue-600" />}
-                              {event.type === 'tracking' && <MapPin className="h-4 w-4 text-green-600" />}
-                              {event.type === 'note' && <MessageSquare className="h-4 w-4 text-purple-600" />}
-                              {event.type === 'cost' && <DollarSign className="h-4 w-4 text-yellow-600" />}
-                              {event.type === 'document' && <FileText className="h-4 w-4 text-gray-600" />}
-                            </div>
-                          </div>
-                          <div className="flex-1 bg-gray-50 rounded-lg p-3">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <p className="text-sm font-medium text-gray-900">
-                                  {event.statusLabel || getShipmentStatusDisplayText(event.status) || event.title || 'Update'}
-                                </p>
-                                {event.description && (
-                                  <p className="text-xs text-gray-600 mt-1">{event.description}</p>
-                                )}
-                                {event.location && (
-                                  <p className="text-xs text-gray-500 mt-1 flex items-center">
-                                    <MapPin className="h-3 w-3 mr-1" />
-                                    {event.location}
-                                  </p>
-                                )}
-                              </div>
-                              <p className="text-xs text-gray-400">
-                                {formatShipmentDate(event.timestamp || event.date || event.createdAt, 'long')}
-                              </p>
-                            </div>
-                            {event.updatedBy && (
-                              <p className="text-xs text-gray-400 mt-2">
-                                By: {event.updatedBy}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-500 text-center py-4">No timeline events yet</p>
-                  )}
+                  {trackingLoading || loading ? <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" style={{ color: COLORS.primary }} /></div> : (trackingData?.timeline?.length > 0 || timeline.length > 0) ? <div className="relative">{(trackingData?.timeline || timeline).map((event, index) => (<div key={index} className="flex items-start space-x-3 mb-4"><div className="flex-shrink-0"><div className={`w-8 h-8 rounded-full flex items-center justify-center ${event.status === 'delivered' || event.status === 'completed' ? 'bg-green-100' : event.status === 'arrived_at_destination_port' ? 'bg-teal-100' : event.status === 'customs_cleared' ? 'bg-emerald-100' : event.status === 'out_for_delivery' ? 'bg-pink-100' : event.status === 'in_transit' ? 'bg-cyan-100' : event.type === 'status' ? 'bg-blue-100' : event.type === 'tracking' ? 'bg-green-100' : event.type === 'note' ? 'bg-purple-100' : event.type === 'cost' ? 'bg-yellow-100' : 'bg-gray-100'}`}>{event.status === 'delivered' && <CheckCircleSolid className="h-4 w-4 text-green-600" />}{event.status === 'arrived_at_destination_port' && <Flag className="h-4 w-4 text-teal-600" />}{event.status === 'customs_cleared' && <Shield className="h-4 w-4 text-emerald-600" />}{event.status === 'out_for_delivery' && <Truck className="h-4 w-4 text-pink-600" />}{event.status === 'in_transit' && <Truck className="h-4 w-4 text-cyan-600" />}{event.type === 'status' && <Activity className="h-4 w-4 text-blue-600" />}{event.type === 'tracking' && <MapPin className="h-4 w-4 text-green-600" />}{event.type === 'note' && <MessageSquare className="h-4 w-4 text-purple-600" />}{event.type === 'cost' && <DollarSign className="h-4 w-4 text-yellow-600" />}{event.type === 'document' && <FileText className="h-4 w-4 text-gray-600" />}</div></div><div className="flex-1 bg-gray-50 rounded-lg p-3"><div className="flex justify-between items-start"><div><p className="text-sm font-medium text-gray-900">{event.statusLabel || getShipmentStatusDisplayText(event.status) || event.title || 'Update'}</p>{event.description && <p className="text-xs text-gray-600 mt-1">{event.description}</p>}{event.location && <p className="text-xs text-gray-500 mt-1 flex items-center"><MapPin className="h-3 w-3 mr-1" />{event.location}</p>}</div><p className="text-xs text-gray-400">{formatShipmentDate(event.timestamp || event.date || event.createdAt, 'long')}</p></div>{event.updatedBy && <p className="text-xs text-gray-400 mt-2">By: {event.updatedBy}</p>}</div></div>))}</div> : <p className="text-sm text-gray-500 text-center py-4">No timeline events yet</p>}
                 </div>
               )}
             </>
           )}
         </div>
-
-        <div className="flex justify-end pt-4">
-          <Button
-            type="button"
-            variant="primary"
-            onClick={onClose}
-          >
-            Close
-          </Button>
-        </div>
+        <div className="flex justify-end pt-4"><Button type="button" variant="primary" onClick={onClose}>Close</Button></div>
       </div>
     </Modal>
   );
@@ -2358,64 +1607,14 @@ const TimelineModal = ({ isOpen, onClose, shipmentId }) => {
   const [timeline, setTimeline] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (isOpen && shipmentId) {
-      fetchTimeline();
-    }
-  }, [isOpen, shipmentId]);
-
-  const fetchTimeline = async () => {
-    setLoading(true);
-    try {
-      const result = await getShipmentTimeline(shipmentId);
-      if (result.success) {
-        setTimeline(result.data || []);
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
-      toast.error('Failed to fetch timeline');
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => { if (isOpen && shipmentId) fetchTimeline(); }, [isOpen, shipmentId]);
+  const fetchTimeline = async () => { setLoading(true); try { const result = await getShipmentTimeline(shipmentId); if (result.success) setTimeline(result.data || []); else toast.error(result.message); } catch (error) { toast.error('Failed to fetch timeline'); } finally { setLoading(false); } };
 
   if (!isOpen) return null;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Shipment Timeline" size="lg">
-      {loading ? (
-        <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin" style={{ color: COLORS.primary }} />
-          <span className="ml-2 text-sm text-gray-500">Loading timeline...</span>
-        </div>
-      ) : timeline.length > 0 ? (
-        <div className="space-y-4">
-          {timeline.map((event, index) => (
-            <div key={index} className="flex items-start space-x-3">
-              <div className="flex-shrink-0">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  event.type === 'status' ? 'bg-blue-100' :
-                  event.type === 'tracking' ? 'bg-green-100' :
-                  event.type === 'note' ? 'bg-purple-100' :
-                  'bg-gray-100'
-                }`}>
-                  {event.type === 'status' && <Activity className="h-4 w-4 text-blue-600" />}
-                  {event.type === 'tracking' && <MapPin className="h-4 w-4 text-green-600" />}
-                  {event.type === 'note' && <MessageSquare className="h-4 w-4 text-purple-600" />}
-                </div>
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-medium text-gray-900">{event.title}</p>
-                <p className="text-xs text-gray-500">{event.description}</p>
-                <p className="text-xs text-gray-400 mt-1">{formatShipmentDate(event.createdAt, 'long')}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-gray-500 text-center py-4">No timeline events found</p>
-      )}
+      {loading ? <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" style={{ color: COLORS.primary }} /><span className="ml-2 text-sm text-gray-500">Loading timeline...</span></div> : timeline.length > 0 ? <div className="space-y-4">{timeline.map((event, index) => (<div key={index} className="flex items-start space-x-3"><div className="flex-shrink-0"><div className={`w-8 h-8 rounded-full flex items-center justify-center ${event.type === 'status' ? 'bg-blue-100' : event.type === 'tracking' ? 'bg-green-100' : event.type === 'note' ? 'bg-purple-100' : 'bg-gray-100'}`}>{event.type === 'status' && <Activity className="h-4 w-4 text-blue-600" />}{event.type === 'tracking' && <MapPin className="h-4 w-4 text-green-600" />}{event.type === 'note' && <MessageSquare className="h-4 w-4 text-purple-600" />}</div></div><div className="flex-1"><p className="text-sm font-medium text-gray-900">{event.title}</p><p className="text-xs text-gray-500">{event.description}</p><p className="text-xs text-gray-400 mt-1">{formatShipmentDate(event.createdAt, 'long')}</p></div></div>))}</div> : <p className="text-sm text-gray-500 text-center py-4">No timeline events found</p>}
     </Modal>
   );
 };
@@ -2426,29 +1625,14 @@ export default function ShipmentsPage() {
   const [loading, setLoading] = useState(true);
   const [shipments, setShipments] = useState([]);
   const [filteredShipments, setFilteredShipments] = useState([]);
-  const [pagination, setPagination] = useState({
-    total: 0,
-    page: 1,
-    limit: 20,
-    pages: 1
-  });
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, pages: 1 });
+  const [showReturnRequestsModal, setShowReturnRequestsModal] = useState(false);
 
-  // Filter State
-  const [filters, setFilters] = useState({
-    page: 1,
-    limit: 20,
-    search: '',
-    startDate: '',
-    endDate: '',
-    sortBy: 'createdAt',
-    sortOrder: 'desc'
-  });
-
+  const [filters, setFilters] = useState({ page: 1, limit: 20, search: '', startDate: '', endDate: '', sortBy: 'createdAt', sortOrder: 'desc' });
   const [showFilters, setShowFilters] = useState(false);
   const [selectedShipments, setSelectedShipments] = useState([]);
   const [activeStat, setActiveStat] = useState('all');
 
-  // Modal States
   const [selectedShipment, setSelectedShipment] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showTimelineModal, setShowTimelineModal] = useState(false);
@@ -2461,19 +1645,9 @@ export default function ShipmentsPage() {
   const [showWarehouseModal, setShowWarehouseModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
 
-  // Stats
-  const [stats, setStats] = useState({
-    total: 0,
-    active: 0,
-    delivered: 0,
-    cancelled: 0,
-    pending: 0,
-    inTransit: 0
-  });
-
+  const [stats, setStats] = useState({ total: 0, active: 0, delivered: 0, cancelled: 0, pending: 0, inTransit: 0 });
   const [topRoutes, setTopRoutes] = useState([]);
 
-  // Fetch Shipments
   const fetchShipments = async () => {
     setLoading(true);
     try {
@@ -2481,764 +1655,125 @@ export default function ShipmentsPage() {
       if (response.success) {
         setShipments(response.data || []);
         setFilteredShipments(response.data || []);
-        setPagination(response.pagination || {
-          total: 0,
-          page: 1,
-          limit: 20,
-          pages: 1
-        });
-        
-        // Calculate stats
+        setPagination(response.pagination || { total: 0, page: 1, limit: 20, pages: 1 });
         const summary = getShipmentSummary(response.data || []);
         setStats(summary);
-        
-        // Calculate top routes
         const routes = getTopRoutes(response.data || [], 5);
         setTopRoutes(routes);
-      } else {
-        toast.error(response.message);
-      }
-    } catch (error) {
-      toast.error(error.message || 'Failed to fetch shipments');
-    } finally {
-      setLoading(false);
-    }
+      } else { toast.error(response.message); }
+    } catch (error) { toast.error(error.message || 'Failed to fetch shipments'); }
+    finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    fetchShipments();
-  }, [filters.page, filters.limit, filters.sortBy, filters.sortOrder]);
+  useEffect(() => { fetchShipments(); }, [filters.page, filters.limit, filters.sortBy, filters.sortOrder]);
 
-  // Handle Filter Change
-  const handleFilterChange = (e) => {
-    const { name, value } = e.target;
-    setFilters(prev => ({ ...prev, [name]: value, page: 1 }));
-    if (name === 'status' && value) {
-      setActiveStat('all');
-    }
-  };
+  const handleFilterChange = (e) => { const { name, value } = e.target; setFilters(prev => ({ ...prev, [name]: value, page: 1 })); if (name === 'status' && value) setActiveStat('all'); };
+  const handleSearch = (e) => { const searchValue = e.target.value; setFilters(prev => ({ ...prev, search: searchValue, page: 1 })); if (searchValue.trim() === '') setFilteredShipments(shipments); else setFilteredShipments(shipments.filter(s => (s.shipmentNumber && s.shipmentNumber.toLowerCase().includes(searchValue.toLowerCase())) || (s._id && s._id.toLowerCase().includes(searchValue.toLowerCase())))); };
+  const handleSort = (field) => { const sortOrder = filters.sortBy === field && filters.sortOrder === 'asc' ? 'desc' : 'asc'; setFilters(prev => ({ ...prev, sortBy: field, sortOrder })); };
+  const clearFilters = () => { setFilters({ page: 1, limit: 20, search: '', startDate: '', endDate: '', sortBy: 'createdAt', sortOrder: 'desc' }); setSelectedShipments([]); setActiveStat('all'); toast.info('Filters cleared'); };
 
-  // Handle Search
-  const handleSearch = (e) => {
-    const searchValue = e.target.value;
-    setFilters(prev => ({ ...prev, search: searchValue, page: 1 }));
-    
-    if (searchValue.trim() === '') {
-      setFilteredShipments(shipments);
-    } else {
-      const filtered = shipments.filter(shipment => 
-        (shipment.shipmentNumber && shipment.shipmentNumber.toLowerCase().includes(searchValue.toLowerCase())) ||
-        (shipment._id && shipment._id.toLowerCase().includes(searchValue.toLowerCase()))
-      );
-      setFilteredShipments(filtered);
-    }
-  };
-
-  // Handle Sort
-  const handleSort = (field) => {
-    const sortOrder = filters.sortBy === field && filters.sortOrder === 'asc' ? 'desc' : 'asc';
-    setFilters(prev => ({ ...prev, sortBy: field, sortOrder }));
-  };
-
-  // Clear Filters
-  const clearFilters = () => {
-    setFilters({
-      page: 1,
-      limit: 20,
-      search: '',
-      startDate: '',
-      endDate: '',
-      sortBy: 'createdAt',
-      sortOrder: 'desc'
-    });
-    setSelectedShipments([]);
-    setActiveStat('all');
-    toast.info('Filters cleared');
-  };
-
-  // Handle Actions
   const handleAction = async (action, shipment) => {
     setSelectedShipment(shipment);
-    
     switch (action) {
-      case 'view':
-        setShowDetailsModal(true);
-        break;
-      case 'timeline':
-        setShowTimelineModal(true);
-        break;
-      case 'status':
-        setShowStatusModal(true);
-        break;
-      case 'tracking':
-        setShowTrackingModal(true);
-        break;
-      case 'assign':
-        setShowAssignModal(true);
-        break;
-      case 'cost':
-        setShowCostModal(true);
-        break;
-      case 'document':
-        setShowDocumentModal(true);
-        break;
-      case 'note':
-        setShowNoteModal(true);
-        break;
-      case 'warehouse':
-        setShowWarehouseModal(true);
-        break;
-      case 'cancel':
-        setShowCancelModal(true);
-        break;
-      case 'download':
-        try {
-          if (shipment.documents && shipment.documents.length > 0) {
-            toast.info('Download feature coming soon');
-          } else {
-            toast.info('No documents to download');
-          }
-        } catch (error) {
-          toast.error('Failed to download documents');
-        }
-        break;
-      case 'share':
-        if (shipment.trackingNumber) {
-          const trackingLink = `${window.location.origin}/track/${shipment.trackingNumber}`;
-          navigator.clipboard.writeText(trackingLink);
-          toast.success('Tracking link copied to clipboard!');
-        } else {
-          toast.warning('No tracking number available');
-        }
-        break;
-      default:
-        break;
+      case 'view': setShowDetailsModal(true); break;
+      case 'timeline': setShowTimelineModal(true); break;
+      case 'status': setShowStatusModal(true); break;
+      case 'tracking': setShowTrackingModal(true); break;
+      case 'assign': setShowAssignModal(true); break;
+      case 'cost': setShowCostModal(true); break;
+      case 'document': setShowDocumentModal(true); break;
+      case 'note': setShowNoteModal(true); break;
+      case 'warehouse': setShowWarehouseModal(true); break;
+      case 'cancel': setShowCancelModal(true); break;
+      case 'download': if (shipment.documents && shipment.documents.length > 0) toast.info('Download feature coming soon'); else toast.info('No documents to download'); break;
+      case 'share': if (shipment.trackingNumber) { navigator.clipboard.writeText(`${window.location.origin}/track/${shipment.trackingNumber}`); toast.success('Tracking link copied!'); } else toast.warning('No tracking number available'); break;
+      default: break;
     }
   };
 
-  // Handle Update Status
-  const handleUpdateStatus = async (shipmentId, statusData) => {
-    try {
-      const result = await updateShipmentStatus(shipmentId, statusData);
-      if (result.success) {
-        toast.success('Status updated successfully!');
-        fetchShipments();
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
-      toast.error('Failed to update status');
-    }
-  };
+  const handleUpdateStatus = async (shipmentId, statusData) => { try { const result = await updateShipmentStatus(shipmentId, statusData); if (result.success) { toast.success('Status updated!'); fetchShipments(); } else toast.error(result.message); } catch (error) { toast.error('Failed to update status'); } };
+  const handleAddTracking = async (shipmentId, trackingData) => { try { const result = await addTrackingUpdate(shipmentId, trackingData); if (result.success) { toast.success('Tracking added!'); fetchShipments(); } else toast.error(result.message); } catch (error) { toast.error('Failed to add tracking'); } };
+  const handleAssignStaff = async (shipmentId, assignData) => { try { const result = await assignShipment(shipmentId, assignData); if (result.success) { toast.success('Staff assigned!'); fetchShipments(); } else toast.error(result.message); } catch (error) { toast.error('Failed to assign staff'); } };
+  const handleAddCost = async (shipmentId, costData) => { try { const result = await addShipmentCost(shipmentId, costData); if (result.success) { toast.success('Cost added!'); fetchShipments(); } else toast.error(result.message); } catch (error) { toast.error('Failed to add cost'); } };
+  const handleUploadDocument = async (shipmentId, formData) => { try { const result = await addShipmentDocument(shipmentId, formData); if (result.success) { toast.success('Document uploaded!'); fetchShipments(); } else toast.error(result.message); } catch (error) { toast.error('Failed to upload document'); } };
+  const handleAddNote = { internalNote: async (shipmentId, noteData) => { try { const result = await addInternalNote(shipmentId, noteData); if (result.success) { toast.success('Internal note added!'); fetchShipments(); } else toast.error(result.message); } catch (error) { toast.error('Failed to add note'); } }, customerNote: async (shipmentId, noteData) => { try { const result = await addCustomerNote(shipmentId, noteData); if (result.success) { toast.success('Customer note added!'); fetchShipments(); } else toast.error(result.message); } catch (error) { toast.error('Failed to add note'); } } };
+  const handleWarehouseAction = { receive: async (shipmentId, data) => { try { const result = await receiveAtWarehouse(shipmentId, data); if (result.success) { toast.success('Shipment received!'); fetchShipments(); } else toast.error(result.message); } catch (error) { toast.error('Failed to receive'); } }, process: async (shipmentId, data) => { try { const result = await processWarehouse(shipmentId, data); if (result.success) { toast.success('Warehouse processing completed!'); fetchShipments(); } else toast.error(result.message); } catch (error) { toast.error('Failed to process'); } } };
+  const handleCancelShipment = async (shipmentId, cancelData) => { try { const result = await cancelShipment(shipmentId, cancelData); if (result.success) { toast.success('Shipment cancelled!'); fetchShipments(); } else toast.error(result.message); } catch (error) { toast.error('Failed to cancel'); } };
+  const handleExport = () => { if (shipments.length === 0) toast.warning('No shipments to export'); else { exportShipmentsToCSV(shipments); toast.success(`${shipments.length} shipments exported!`); } };
+  const handleSelectAll = () => { if (selectedShipments.length === filteredShipments.length) setSelectedShipments([]); else setSelectedShipments(filteredShipments.map(s => s._id)); };
+  const filterByStatus = (status) => { setActiveStat(status); if (status === 'all') setFilteredShipments(shipments); else setFilteredShipments(shipments.filter(s => s.status === status)); if (status !== 'all') setFilters(prev => ({ ...prev, page: 1 })); };
 
-  // Handle Add Tracking
-  const handleAddTracking = async (shipmentId, trackingData) => {
-    try {
-      const result = await addTrackingUpdate(shipmentId, trackingData);
-      if (result.success) {
-        toast.success('Tracking update added!');
-        fetchShipments();
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
-      toast.error('Failed to add tracking');
-    }
-  };
-
-  // Handle Assign Staff
-  const handleAssignStaff = async (shipmentId, assignData) => {
-    try {
-      const result = await assignShipment(shipmentId, assignData);
-      if (result.success) {
-        toast.success('Staff assigned successfully!');
-        fetchShipments();
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
-      toast.error('Failed to assign staff');
-    }
-  };
-
-  // Handle Add Cost
-  const handleAddCost = async (shipmentId, costData) => {
-    try {
-      const result = await addShipmentCost(shipmentId, costData);
-      if (result.success) {
-        toast.success('Cost added successfully!');
-        fetchShipments();
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
-      toast.error('Failed to add cost');
-    }
-  };
-
-  // Handle Upload Document
-  const handleUploadDocument = async (shipmentId, formData) => {
-    try {
-      const result = await addShipmentDocument(shipmentId, formData);
-      if (result.success) {
-        toast.success('Document uploaded successfully!');
-        fetchShipments();
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
-      toast.error('Failed to upload document');
-    }
-  };
-
-  // Handle Add Note
-  const handleAddNote = {
-    internalNote: async (shipmentId, noteData) => {
-      try {
-        const result = await addInternalNote(shipmentId, noteData);
-        if (result.success) {
-          toast.success('Internal note added!');
-          fetchShipments();
-        } else {
-          toast.error(result.message);
-        }
-      } catch (error) {
-        toast.error('Failed to add note');
-      }
-    },
-    customerNote: async (shipmentId, noteData) => {
-      try {
-        const result = await addCustomerNote(shipmentId, noteData);
-        if (result.success) {
-          toast.success('Customer note added!');
-          fetchShipments();
-        } else {
-          toast.error(result.message);
-        }
-      } catch (error) {
-        toast.error('Failed to add note');
-      }
-    }
-  };
-
-  // Handle Warehouse Actions
-  const handleWarehouseAction = {
-    receive: async (shipmentId, data) => {
-      try {
-        const result = await receiveAtWarehouse(shipmentId, data);
-        if (result.success) {
-          toast.success('Shipment received at warehouse!');
-          fetchShipments();
-        } else {
-          toast.error(result.message);
-        }
-      } catch (error) {
-        toast.error('Failed to receive at warehouse');
-      }
-    },
-    process: async (shipmentId, data) => {
-      try {
-        const result = await processWarehouse(shipmentId, data);
-        if (result.success) {
-          toast.success('Warehouse processing completed!');
-          fetchShipments();
-        } else {
-          toast.error(result.message);
-        }
-      } catch (error) {
-        toast.error('Failed to process warehouse');
-      }
-    }
-  };
-
-  // Handle Cancel Shipment
-  const handleCancelShipment = async (shipmentId, cancelData) => {
-    try {
-      const result = await cancelShipment(shipmentId, cancelData);
-      if (result.success) {
-        toast.success('Shipment cancelled!');
-        fetchShipments();
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
-      toast.error('Failed to cancel shipment');
-    }
-  };
-
-  // Handle Export
-  const handleExport = () => {
-    if (shipments.length === 0) {
-      toast.warning('No shipments to export');
-      return;
-    }
-    exportShipmentsToCSV(shipments);
-    toast.success(`${shipments.length} shipments exported successfully!`);
-  };
-
-  // Handle Select All
-  const handleSelectAll = () => {
-    if (selectedShipments.length === filteredShipments.length) {
-      setSelectedShipments([]);
-    } else {
-      setSelectedShipments(filteredShipments.map(s => s._id));
-    }
-  };
-
-  // Filter by status
-  const filterByStatus = (status) => {
-    setActiveStat(status);
-    
-    if (status === 'all') {
-      setFilteredShipments(shipments);
-    } else {
-      const filtered = shipments.filter(shipment => shipment.status === status);
-      setFilteredShipments(filtered);
-    }
-    
-    if (status !== 'all') {
-      setFilters(prev => ({ ...prev, page: 1 }));
-    }
-  };
-
-  // Get visible stats
-  const visibleStats = [
-    { key: 'all', label: 'All', value: stats.total, icon: Package, color: 'bg-gray-100 text-gray-600' },
-    { key: 'active', label: 'Active', value: stats.active, icon: Activity, color: 'bg-blue-100 text-blue-600' }, 
-    { key: 'cancelled', label: 'Cancelled', value: stats.cancelled, icon: XCircleSolid, color: 'bg-red-100 text-red-600' }
-  ];
-
-  // Helper function to get tracking status from shipment
-  const getTrackingStatus = (shipment) => {
-    if (shipment.trackingUpdates && shipment.trackingUpdates.length > 0) {
-      const lastUpdate = shipment.trackingUpdates[shipment.trackingUpdates.length - 1];
-      return lastUpdate.status;
-    }
-    if (shipment.status === 'delivered') return 'delivered';
-    if (shipment.status === 'in_transit') return 'in_transit';
-    if (shipment.status === 'out_for_delivery') return 'out_for_delivery';
-    if (shipment.status === 'arrived_at_destination_port') return 'arrived_at_destination_port';
-    if (shipment.status === 'customs_cleared') return 'customs_cleared';
-    if (shipment.status === 'cancelled') return 'exception';
-    return 'pending';
-  };
+  const visibleStats = [{ key: 'all', label: 'All', value: stats.total, icon: Package, color: 'bg-gray-100 text-gray-600' }, { key: 'active', label: 'Active', value: stats.active, icon: Activity, color: 'bg-blue-100 text-blue-600' }, { key: 'cancelled', label: 'Cancelled', value: stats.cancelled, icon: XCircleSolid, color: 'bg-red-100 text-red-600' }];
+  const getTrackingStatus = (shipment) => { if (shipment.trackingUpdates && shipment.trackingUpdates.length > 0) return shipment.trackingUpdates[shipment.trackingUpdates.length - 1].status; if (shipment.status === 'delivered') return 'delivered'; if (shipment.status === 'in_transit') return 'in_transit'; if (shipment.status === 'out_for_delivery') return 'out_for_delivery'; if (shipment.status === 'arrived_at_destination_port') return 'arrived_at_destination_port'; if (shipment.status === 'customs_cleared') return 'customs_cleared'; if (shipment.status === 'cancelled') return 'exception'; return 'pending'; };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-white border-b shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
-              <div className="flex items-center">
-                <div 
-                  className="w-8 h-8 rounded-lg flex items-center justify-center"
-                  style={{ backgroundColor: COLORS.primaryLight }}
-                >
-                  <Package className="h-4 w-4" style={{ color: COLORS.primary }} />
-                </div>
-                <h1 className="ml-2 text-lg font-semibold text-gray-900">Shipments Management</h1>
-              </div>
-              <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
-                {stats.total} Total
-              </span>
-            </div> 
+              <div className="flex items-center"><div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: COLORS.primaryLight }}><Package className="h-4 w-4" style={{ color: COLORS.primary }} /></div><h1 className="ml-2 text-lg font-semibold text-gray-900">Shipments Management</h1></div>
+              <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">{stats.total} Total</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button variant="light" size="sm" onClick={() => setShowReturnRequestsModal(true)} icon={<Undo2 className="h-4 w-4" />}>Return Requests</Button>
+              <Button variant="light" size="sm" onClick={handleExport} icon={<ExportIcon className="h-4 w-4" />}>Export</Button>
+              <Button variant="light" size="sm" onClick={fetchShipments} icon={<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />} />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-          {visibleStats.map((stat) => (
-            <StatCard
-              key={stat.key}
-              title={stat.label}
-              value={stat.value}
-              icon={stat.icon}
-              color={stat.color}
-              active={activeStat === stat.key}
-              onClick={() => filterByStatus(stat.key)}
-            />
-          ))}
+          {visibleStats.map(stat => (<StatCard key={stat.key} title={stat.label} value={stat.value} icon={stat.icon} color={stat.color} active={activeStat === stat.key} onClick={() => filterByStatus(stat.key)} />))}
         </div>
 
-        {/* Top Routes */}
         {topRoutes.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
-            {topRoutes.map((route, index) => (
-              <div key={index} className="bg-white rounded-xl border border-gray-200 p-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <MapPin className="h-4 w-4 text-gray-400" />
-                    <span className="text-xs text-gray-500">Route {index + 1}</span>
-                  </div>
-                  <span className="text-xs font-medium bg-gray-100 px-2 py-1 rounded-full">
-                    {route.count} shipments
-                  </span>
-                </div>
-                <p className="text-sm font-medium mt-2">{route.route}</p>
-              </div>
-            ))}
+            {topRoutes.map((route, index) => (<div key={index} className="bg-white rounded-xl border border-gray-200 p-3"><div className="flex items-center justify-between"><div className="flex items-center space-x-2"><MapPin className="h-4 w-4 text-gray-400" /><span className="text-xs text-gray-500">Route {index + 1}</span></div><span className="text-xs font-medium bg-gray-100 px-2 py-1 rounded-full">{route.count} shipments</span></div><p className="text-sm font-medium mt-2">{route.route}</p></div>))}
           </div>
         )}
 
-        {/* Search and Filters */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
           <div className="p-4">
             <div className="flex items-center space-x-2">
-              <div className="flex-1">
-                <Input
-                  type="text"
-                  placeholder="Search by shipment number..."
-                  value={filters.search}
-                  onChange={handleSearch}
-                  icon={Search}
-                />
-              </div>
-              <Button
-                variant={showFilters ? 'primary' : 'light'}
-                size="md"
-                onClick={() => setShowFilters(!showFilters)}
-                icon={<FilterIcon className="h-4 w-4" />}
-              >
-                Filters
-                {(filters.startDate || filters.endDate) && (
-                  <span className="ml-2 bg-white text-[${COLORS.primary}] rounded-full px-2 py-0.5 text-xs">
-                    {Object.values(filters).filter(v => v && v !== '' && v !== 20 && v !== 1).length}
-                  </span>
-                )}
-              </Button>
-              {(filters.search || filters.startDate || filters.endDate || activeStat !== 'all') && (
-                <Button
-                  variant="light"
-                  size="md"
-                  onClick={clearFilters}
-                  icon={<X className="h-4 w-4" />}
-                >
-                  Clear
-                </Button>
-              )}
-              <Button
-                variant="light"
-                size="md"
-                onClick={fetchShipments}
-                icon={<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />}
-              />
+              <div className="flex-1"><Input type="text" placeholder="Search by shipment number..." value={filters.search} onChange={handleSearch} icon={Search} /></div>
+              <Button variant={showFilters ? 'primary' : 'light'} size="md" onClick={() => setShowFilters(!showFilters)} icon={<FilterIcon className="h-4 w-4" />}>Filters{(filters.startDate || filters.endDate) && (<span className="ml-2 bg-white text-[${COLORS.primary}] rounded-full px-2 py-0.5 text-xs">{Object.values(filters).filter(v => v && v !== '' && v !== 20 && v !== 1).length}</span>)}</Button>
+              {(filters.search || filters.startDate || filters.endDate || activeStat !== 'all') && (<Button variant="light" size="md" onClick={clearFilters} icon={<X className="h-4 w-4" />}>Clear</Button>)}
             </div>
           </div>
         </div>
 
-        {/* Bulk Actions */}
-        {selectedShipments.length > 0 && (
-          <div className="bg-indigo-50 border border-indigo-200 rounded-xl mb-4 p-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <span className="text-sm font-medium text-indigo-700">
-                  {selectedShipments.length} shipment(s) selected
-                </span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Button 
-                  size="sm" 
-                  variant="ghost" 
-                  onClick={() => setSelectedShipments([])}
-                  icon={<X className="h-4 w-4" />}
-                />
-              </div>
-            </div>
-          </div>
-        )}
+        {selectedShipments.length > 0 && (<div className="bg-indigo-50 border border-indigo-200 rounded-xl mb-4 p-3"><div className="flex items-center justify-between"><div className="flex items-center"><span className="text-sm font-medium text-indigo-700">{selectedShipments.length} shipment(s) selected</span></div><div className="flex items-center space-x-2"><Button size="sm" variant="ghost" onClick={() => setSelectedShipments([])} icon={<X className="h-4 w-4" />} /></div></div></div>)}
 
-        {/* Shipments Table */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
-                <tr>
-                  <th className="w-10 px-4 py-3">
-                    
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    <div 
-                      className="flex items-center cursor-pointer hover:text-gray-700"
-                      onClick={() => handleSort('shipmentNumber')}
-                    >
-                      Shipment Info
-                      <ArrowUpDown className="h-4 w-4 ml-1" />
-                    </div>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    <div 
-                      className="flex items-center cursor-pointer hover:text-gray-700"
-                      onClick={() => handleSort('customer')}
-                    >
-                      Customer
-                      <ArrowUpDown className="h-4 w-4 ml-1" />
-                    </div>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Route
-                  </th> 
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    <div 
-                      className="flex items-center cursor-pointer hover:text-gray-700"
-                      onClick={() => handleSort('createdAt')}
-                    >
-                      Created
-                      <ArrowUpDown className="h-4 w-4 ml-1" />
-                    </div>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Packages
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
+                <tr><th className="w-10 px-4 py-3"></th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><div className="flex items-center cursor-pointer hover:text-gray-700" onClick={() => handleSort('shipmentNumber')}>Shipment Info<ArrowUpDown className="h-4 w-4 ml-1" /></div></th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><div className="flex items-center cursor-pointer hover:text-gray-700" onClick={() => handleSort('customer')}>Customer<ArrowUpDown className="h-4 w-4 ml-1" /></div></th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Route</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><div className="flex items-center cursor-pointer hover:text-gray-700" onClick={() => handleSort('createdAt')}>Created<ArrowUpDown className="h-4 w-4 ml-1" /></div></th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Packages</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th></tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {loading ? (
-                  <tr>
-                    <td colSpan="9" className="px-4 py-8 text-center">
-                      <div className="flex items-center justify-center">
-                        <Loader2 className="h-6 w-6 animate-spin" style={{ color: COLORS.primary }} />
-                        <span className="ml-2 text-sm text-gray-500">Loading shipments...</span>
-                      </div>
-                    </td>
-                  </tr>
-                ) : filteredShipments.length === 0 ? (
-                  <tr>
-                    <td colSpan="9" className="px-4 py-8 text-center">
-                      <div className="flex flex-col items-center">
-                        <Package className="h-12 w-12 text-gray-400 mb-3" />
-                        <p className="text-sm text-gray-500">No shipments found</p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredShipments.map((shipment) => {
-                    const totalWeight = calculateTotalWeight(shipment.packages);
-                    const progress = getShipmentProgress(shipment.status);
-                    const trackingStatus = getTrackingStatus(shipment);
-                    
-                    return (
-                      <tr 
-                        key={shipment._id} 
-                        className="hover:bg-gray-50 transition-colors group"
-                      >
-                        <td className="px-4 py-3">
-                           
-                        </td>
-                        <td className="px-4 py-3">
-                          <div>
-                            <div 
-                              className="text-sm font-medium cursor-pointer hover:underline"
-                              style={{ color: COLORS.primary }}
-                              onClick={() => {
-                                setSelectedShipment(shipment);
-                                setShowDetailsModal(true);
-                              }}
-                            >
-                              {shipment.shipmentNumber || shipment._id?.slice(-8).toUpperCase()}
-                            </div>
-                            {shipment.trackingNumber && (
-                              <div className="text-xs text-gray-500 flex items-center mt-1">
-                                <Hash className="h-3 w-3 mr-1" />
-                                {shipment.trackingNumber}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="text-sm font-medium text-gray-900">
-                            {shipment.customerId?.companyName || 
-                             `${shipment.customerId?.firstName || ''} ${shipment.customerId?.lastName || ''}`.trim() || 'N/A'}
-                          </div>
-                          {shipment.customerId?.email && (
-                            <div className="text-xs text-gray-500">
-                              {shipment.customerId.email}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center text-xs">
-                            <span className="font-medium text-gray-900">{shipment.shipmentDetails?.origin || 'N/A'}</span>
-                            <ChevronRight className="h-3 w-3 mx-1 text-gray-400" />
-                            <span className="font-medium text-gray-900">{shipment.shipmentDetails?.destination || 'N/A'}</span>
-                          </div>
-                        </td> 
-                        <td className="px-4 py-3">
-                          <div className="text-xs text-gray-500">
-                            {formatShipmentDate(shipment.createdAt, 'short')}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="text-xs">
-                            <div className="text-gray-900">
-                              {shipment.packages?.length || 0} pkgs
-                            </div>
-                            <div className="text-gray-500">
-                              {formatWeight(totalWeight)}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-col space-y-1">
-                            <StatusBadge status={shipment.status} size="sm" />
-                            <div className="w-24">
-                              <ProgressBar progress={progress} />
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <ActionMenu shipment={shipment} onAction={handleAction} />
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
+                {loading ? (<tr><td colSpan="9" className="px-4 py-8 text-center"><div className="flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" style={{ color: COLORS.primary }} /><span className="ml-2 text-sm text-gray-500">Loading shipments...</span></div></td></tr>) : filteredShipments.length === 0 ? (<tr><td colSpan="9" className="px-4 py-8 text-center"><div className="flex flex-col items-center"><Package className="h-12 w-12 text-gray-400 mb-3" /><p className="text-sm text-gray-500">No shipments found</p></div></td></tr>) : (filteredShipments.map((shipment) => { const totalWeight = calculateTotalWeight(shipment.packages); const progress = getShipmentProgress(shipment.status); const trackingStatus = getTrackingStatus(shipment); return (<tr key={shipment._id} className="hover:bg-gray-50 transition-colors group"><td className="px-4 py-3"></td><td className="px-4 py-3"><div><div className="text-sm font-medium cursor-pointer hover:underline" style={{ color: COLORS.primary }} onClick={() => { setSelectedShipment(shipment); setShowDetailsModal(true); }}>{shipment.shipmentNumber || shipment._id?.slice(-8).toUpperCase()}</div>{shipment.trackingNumber && (<div className="text-xs text-gray-500 flex items-center mt-1"><Hash className="h-3 w-3 mr-1" />{shipment.trackingNumber}</div>)}</div></td><td className="px-4 py-3"><div className="text-sm font-medium text-gray-900">{shipment.customerId?.companyName || `${shipment.customerId?.firstName || ''} ${shipment.customerId?.lastName || ''}`.trim() || 'N/A'}</div>{shipment.customerId?.email && <div className="text-xs text-gray-500">{shipment.customerId.email}</div>}</td><td className="px-4 py-3"><div className="flex items-center text-xs"><span className="font-medium text-gray-900">{shipment.shipmentDetails?.origin || 'N/A'}</span><ChevronRight className="h-3 w-3 mx-1 text-gray-400" /><span className="font-medium text-gray-900">{shipment.shipmentDetails?.destination || 'N/A'}</span></div></td><td className="px-4 py-3"><div className="text-xs text-gray-500">{formatShipmentDate(shipment.createdAt, 'short')}</div></td><td className="px-4 py-3"><div className="text-xs"><div className="text-gray-900">{shipment.packages?.length || 0} pkgs</div><div className="text-gray-500">{formatWeight(totalWeight)}</div></div></td><td className="px-4 py-3"><div className="flex flex-col space-y-1"><StatusBadge status={shipment.status} size="sm" /><div className="w-24"><ProgressBar progress={progress} /></div></div></td><td className="px-4 py-3"><ActionMenu shipment={shipment} onAction={handleAction} /></td></tr>); }))}
               </tbody>
             </table>
           </div>
 
-          {/* Pagination */}
-          {pagination.pages > 1 && (
-            <div className="border-t px-4 py-3 bg-gray-50">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <span className="text-xs text-gray-600">
-                    Showing {(pagination.page - 1) * filters.limit + 1} to{' '}
-                    {Math.min(pagination.page * filters.limit, pagination.total)} of{' '}
-                    {pagination.total} results
-                  </span>
-                  <Select
-                    name="limit"
-                    value={filters.limit}
-                    onChange={handleFilterChange}
-                    options={[
-                      { value: 10, label: '10 / page' },
-                      { value: 20, label: '20 / page' },
-                      { value: 50, label: '50 / page' },
-                      { value: 100, label: '100 / page' }
-                    ]}
-                    className="w-24"
-                  />
-                </div>
-
-                <div className="flex items-center space-x-1">
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    onClick={() => setFilters(prev => ({ ...prev, page: 1 }))}
-                    disabled={filters.page === 1}
-                    icon={<ChevronsLeft className="h-4 w-4" />}
-                  />
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    onClick={() => setFilters(prev => ({ ...prev, page: prev.page - 1 }))}
-                    disabled={filters.page === 1}
-                    icon={<ChevronLeft className="h-4 w-4" />}
-                  />
-                  
-                  <span className="text-sm text-gray-600 px-3">
-                    Page {filters.page} of {pagination.pages}
-                  </span>
-
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    onClick={() => setFilters(prev => ({ ...prev, page: prev.page + 1 }))}
-                    disabled={filters.page === pagination.pages}
-                    icon={<ChevronRight className="h-4 w-4" />}
-                  />
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    onClick={() => setFilters(prev => ({ ...prev, page: pagination.pages }))}
-                    disabled={filters.page === pagination.pages}
-                    icon={<ChevronsRight className="h-4 w-4" />}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
+          {pagination.pages > 1 && (<div className="border-t px-4 py-3 bg-gray-50"><div className="flex items-center justify-between"><div className="flex items-center space-x-4"><span className="text-xs text-gray-600">Showing {(pagination.page - 1) * filters.limit + 1} to {Math.min(pagination.page * filters.limit, pagination.total)} of {pagination.total} results</span><Select name="limit" value={filters.limit} onChange={handleFilterChange} options={[{ value: 10, label: '10 / page' }, { value: 20, label: '20 / page' }, { value: 50, label: '50 / page' }, { value: 100, label: '100 / page' }]} className="w-24" /></div><div className="flex items-center space-x-1"><Button size="xs" variant="ghost" onClick={() => setFilters(prev => ({ ...prev, page: 1 }))} disabled={filters.page === 1} icon={<ChevronsLeft className="h-4 w-4" />} /><Button size="xs" variant="ghost" onClick={() => setFilters(prev => ({ ...prev, page: prev.page - 1 }))} disabled={filters.page === 1} icon={<ChevronLeft className="h-4 w-4" />} /><span className="text-sm text-gray-600 px-3">Page {filters.page} of {pagination.pages}</span><Button size="xs" variant="ghost" onClick={() => setFilters(prev => ({ ...prev, page: prev.page + 1 }))} disabled={filters.page === pagination.pages} icon={<ChevronRight className="h-4 w-4" />} /><Button size="xs" variant="ghost" onClick={() => setFilters(prev => ({ ...prev, page: pagination.pages }))} disabled={filters.page === pagination.pages} icon={<ChevronsRight className="h-4 w-4" />} /></div></div></div>)}
         </div>
       </div>
 
-      {/* Modals */}
-      <ShipmentDetailsModal
-        isOpen={showDetailsModal}
-        onClose={() => setShowDetailsModal(false)}
-        shipment={selectedShipment}
-      />
-
-      <TimelineModal
-        isOpen={showTimelineModal}
-        onClose={() => setShowTimelineModal(false)}
-        shipmentId={selectedShipment?._id}
-      />
-
-      <StatusUpdateModal
-        isOpen={showStatusModal}
-        onClose={() => setShowStatusModal(false)}
-        shipment={selectedShipment}
-        onUpdate={handleUpdateStatus}
-      />
-
-      <TrackingUpdateModal
-        isOpen={showTrackingModal}
-        onClose={() => setShowTrackingModal(false)}
-        shipment={selectedShipment}
-        onAdd={handleAddTracking}
-      />
-
-      <AssignModal
-        isOpen={showAssignModal}
-        onClose={() => setShowAssignModal(false)}
-        shipment={selectedShipment}
-        onAssign={handleAssignStaff}
-      />
-
-      <CostModal
-        isOpen={showCostModal}
-        onClose={() => setShowCostModal(false)}
-        shipment={selectedShipment}
-        onAdd={handleAddCost}
-      />
-
-      <DocumentModal
-        isOpen={showDocumentModal}
-        onClose={() => setShowDocumentModal(false)}
-        shipment={selectedShipment}
-        onUpload={handleUploadDocument}
-      />
-
-      <NoteModal
-        isOpen={showNoteModal}
-        onClose={() => setShowNoteModal(false)}
-        shipment={selectedShipment}
-        onAdd={handleAddNote}
-      />
-
-      <WarehouseModal
-        isOpen={showWarehouseModal}
-        onClose={() => setShowWarehouseModal(false)}
-        shipment={selectedShipment}
-        onAction={handleWarehouseAction}
-      />
-
-      <CancelModal
-        isOpen={showCancelModal}
-        onClose={() => setShowCancelModal(false)}
-        shipment={selectedShipment}
-        onCancel={handleCancelShipment}
-      />
+      <ShipmentDetailsModal isOpen={showDetailsModal} onClose={() => setShowDetailsModal(false)} shipment={selectedShipment} />
+      <TimelineModal isOpen={showTimelineModal} onClose={() => setShowTimelineModal(false)} shipmentId={selectedShipment?._id} />
+      <StatusUpdateModal isOpen={showStatusModal} onClose={() => setShowStatusModal(false)} shipment={selectedShipment} onUpdate={handleUpdateStatus} />
+      <TrackingUpdateModal isOpen={showTrackingModal} onClose={() => setShowTrackingModal(false)} shipment={selectedShipment} onAdd={handleAddTracking} />
+      <AssignModal isOpen={showAssignModal} onClose={() => setShowAssignModal(false)} shipment={selectedShipment} onAssign={handleAssignStaff} />
+      <CostModal isOpen={showCostModal} onClose={() => setShowCostModal(false)} shipment={selectedShipment} onAdd={handleAddCost} />
+      <DocumentModal isOpen={showDocumentModal} onClose={() => setShowDocumentModal(false)} shipment={selectedShipment} onUpload={handleUploadDocument} />
+      <NoteModal isOpen={showNoteModal} onClose={() => setShowNoteModal(false)} shipment={selectedShipment} onAdd={handleAddNote} />
+      <WarehouseModal isOpen={showWarehouseModal} onClose={() => setShowWarehouseModal(false)} shipment={selectedShipment} onAction={handleWarehouseAction} />
+      <CancelModal isOpen={showCancelModal} onClose={() => setShowCancelModal(false)} shipment={selectedShipment} onCancel={handleCancelShipment} />
+      <ReturnRequestsModal isOpen={showReturnRequestsModal} onClose={() => setShowReturnRequestsModal(false)} onRefresh={fetchShipments} />
     </div>
   );
 }

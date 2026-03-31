@@ -550,31 +550,12 @@ const InvoiceTableRow = ({ invoice, onView, onEdit, onDelete, onMarkPaid, onPDF,
           <Calendar className="h-3 w-3 mr-1 text-gray-400" />
           {formatDate(invoice.invoiceDate, 'short')}
         </div>
-      </td>
-      <td className="px-4 py-3 text-sm">
-        <div>
-          <div className="flex items-center">
-            <Calendar className="h-3 w-3 mr-1 text-gray-400" />
-            <span className={isOverdue ? 'text-red-600 font-medium' : ''}>
-              {formatDate(invoice.dueDate, 'short')}
-            </span>
-          </div>
-          {daysUntilDue !== null && daysUntilDue <= 7 && invoice.paymentStatus !== 'paid' && (
-            <p className="text-xs text-red-500 mt-1">Due in {daysUntilDue} days</p>
-          )}
-        </div>
-      </td>
+      </td> 
       <td className="px-4 py-3 text-sm font-medium text-right">
         <span className="font-bold text-[#E67E22]">
           {formatCurrency(invoice.totalAmount, invoice.currency)}
         </span>
-      </td>
-      <td className="px-4 py-3">
-        <StatusBadge status={invoice.status} />
-      </td>
-      <td className="px-4 py-3">
-        <StatusBadge status={invoice.paymentStatus} type="payment" />
-      </td>
+      </td>  
       <td className="px-4 py-3">
         <div className="flex items-center justify-end space-x-1">
           <button
@@ -584,7 +565,7 @@ const InvoiceTableRow = ({ invoice, onView, onEdit, onDelete, onMarkPaid, onPDF,
           >
             <Eye className="h-4 w-4 text-gray-600" />
           </button>
-          {canEditInvoice(invoice.status) && (
+          {/* {canEditInvoice(invoice.status) && (
             <button
               onClick={() => onEdit(invoice)}
               className="p-1.5 hover:bg-gray-100 rounded-lg"
@@ -592,7 +573,7 @@ const InvoiceTableRow = ({ invoice, onView, onEdit, onDelete, onMarkPaid, onPDF,
             >
               <Edit className="h-4 w-4 text-gray-600" />
             </button>
-          )}
+          )} */}
           <button
             onClick={() => onPDF(invoice._id)}
             className="p-1.5 hover:bg-gray-100 rounded-lg"
@@ -600,7 +581,7 @@ const InvoiceTableRow = ({ invoice, onView, onEdit, onDelete, onMarkPaid, onPDF,
           >
             <FileText className="h-4 w-4 text-red-500" />
           </button>
-          {canMarkAsPaid(invoice.paymentStatus) && (
+          {/* {canMarkAsPaid(invoice.paymentStatus) && (
             <button
               onClick={() => onMarkPaid(invoice)}
               className="p-1.5 hover:bg-green-100 rounded-lg"
@@ -608,7 +589,7 @@ const InvoiceTableRow = ({ invoice, onView, onEdit, onDelete, onMarkPaid, onPDF,
             >
               <CreditCard className="h-4 w-4 text-green-600" />
             </button>
-          )}
+          )} */}
           {canDeleteInvoice(invoice.status) && (
             <button
               onClick={() => onDelete(invoice._id)}
@@ -640,48 +621,7 @@ const FilterBar = ({ filters, onFilterChange, onSearch, searchTerm, onRefresh })
             onChange={(e) => onSearch(e.target.value)}
             className="w-full pl-9 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22]"
           />
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <select
-            value={filters.status}
-            onChange={(e) => onFilterChange('status', e.target.value)}
-            className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22] text-sm"
-          >
-            <option value="all">All Status</option>
-            <option value="draft">Draft</option>
-            <option value="sent">Sent</option>
-            <option value="paid">Paid</option>
-            <option value="overdue">Overdue</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-
-          <select
-            value={filters.paymentStatus}
-            onChange={(e) => onFilterChange('paymentStatus', e.target.value)}
-            className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#E67E22] text-sm"
-          >
-            <option value="all">All Payments</option>
-            <option value="pending">Pending</option>
-            <option value="paid">Paid</option>
-            <option value="overdue">Overdue</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`p-2 border rounded-lg hover:bg-gray-50 ${showFilters ? 'bg-orange-50 border-orange-200' : ''}`}
-          >
-            <Filter className="h-4 w-4 text-gray-600" />
-          </button>
-
-          <button
-            onClick={onRefresh}
-            className="p-2 border rounded-lg hover:bg-gray-50"
-          >
-            <RefreshCw className="h-4 w-4 text-gray-600" />
-          </button>
-        </div>
+        </div> 
       </div>
 
       {showFilters && (
@@ -726,9 +666,7 @@ const FilterBar = ({ filters, onFilterChange, onSearch, searchTerm, onRefresh })
               <option value="-createdAt">Newest First</option>
               <option value="createdAt">Oldest First</option>
               <option value="-totalAmount">Highest Amount</option>
-              <option value="totalAmount">Lowest Amount</option>
-              <option value="dueDate">Due Date (Earliest)</option>
-              <option value="-dueDate">Due Date (Latest)</option>
+              <option value="totalAmount">Lowest Amount</option> 
             </select>
           </div>
         </div>
@@ -805,23 +743,7 @@ const InvoiceDetailsModal = ({ isOpen, onClose, invoice, onMarkPaid, onPDF, onSe
 
         <div className="p-6">
           {activeTab === 'details' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <p className="text-xs text-gray-500 mb-1">Invoice Status</p>
-                  <div className="flex items-center">
-                    <StatusIcon className={`h-5 w-5 mr-2 ${statusInfo.text}`} />
-                    <span className={`font-medium ${statusInfo.text}`}>{statusInfo.label}</span>
-                  </div>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <p className="text-xs text-gray-500 mb-1">Payment Status</p>
-                  <div className="flex items-center">
-                    <PaymentIcon className={`h-5 w-5 mr-2 ${paymentInfo.text}`} />
-                    <span className={`font-medium ${paymentInfo.text}`}>{paymentInfo.label}</span>
-                  </div>
-                </div>
-              </div>
+            <div className="space-y-6"> 
 
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h3 className="font-medium mb-3 flex items-center">
@@ -844,9 +766,8 @@ const InvoiceDetailsModal = ({ isOpen, onClose, invoice, onMarkPaid, onPDF, onSe
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div><p className="text-xs text-gray-500">Invoice Date</p><p>{formatDate(invoice.invoiceDate, 'long')}</p></div>
-                  <div><p className="text-xs text-gray-500">Due Date</p><p className={new Date(invoice.dueDate) < new Date() && invoice.paymentStatus !== 'paid' ? 'text-red-600 font-medium' : ''}>{formatDate(invoice.dueDate, 'long')}</p></div>
-                  <div><p className="text-xs text-gray-500">Currency</p><p>{invoice.currency}</p></div>
-                  <div><p className="text-xs text-gray-500">Payment Terms</p><p>{invoice.paymentTerms || 'Due within 30 days'}</p></div>
+                   
+                  <div><p className="text-xs text-gray-500">Currency</p><p>{invoice.currency}</p></div> 
                 </div>
               </div>
 
@@ -901,7 +822,7 @@ const InvoiceDetailsModal = ({ isOpen, onClose, invoice, onMarkPaid, onPDF, onSe
           )}
         </div>
 
-        <div className="sticky bottom-0 bg-white border-t p-6">
+        {/* <div className="sticky bottom-0 bg-white border-t p-6">
           <div className="flex justify-between">
             <button onClick={onClose} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Close</button>
             <div className="flex space-x-2">
@@ -911,7 +832,7 @@ const InvoiceDetailsModal = ({ isOpen, onClose, invoice, onMarkPaid, onPDF, onSe
               <button onClick={() => onPDF(invoice._id)} className="px-4 py-2 bg-[#E67E22] text-white rounded-lg hover:bg-[#d35400] flex items-center"><FileText className="h-4 w-4 mr-2" />Download PDF</button>
             </div>
           </div>
-        </div>
+        </div> */}
       </div>
     </div>
   );
@@ -1424,37 +1345,7 @@ export default function InvoicesPage() {
                   Manage and track all invoices
                 </p>
               </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setViewMode(viewMode === 'table' ? 'card' : 'table')}
-                className="p-2 hover:bg-gray-100 rounded-lg border"
-                title={viewMode === 'table' ? 'Card view' : 'Table view'}
-              >
-                {viewMode === 'table' ? <Package className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-              </button>
-              <button
-                onClick={handleExportCSV}
-                className="p-2 hover:bg-gray-100 rounded-lg border"
-                title="Export CSV"
-              >
-                <Download className="h-4 w-4" />
-              </button>
-              <button
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="p-2 hover:bg-gray-100 rounded-lg border"
-              >
-                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              </button>
-              <Link
-                href="/admin/invoices/create"
-                className="px-4 py-2 bg-[#E67E22] text-white rounded-lg hover:bg-[#d35400] flex items-center"
-              >
-                <PlusCircle className="h-4 w-4 mr-2" />
-                New Invoice
-              </Link>
-            </div>
+            </div> 
           </div>
 
           {/* Stats */}
@@ -1554,11 +1445,8 @@ export default function InvoicesPage() {
                         </th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Invoice #</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th> 
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th> 
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                       </tr>
                     </thead>

@@ -477,70 +477,14 @@ const ActionMenu = ({ booking, onAction }) => {
       action: 'view', 
       color: 'text-blue-600',
       show: true
-    },
-    { 
-      label: 'View Timeline', 
-      icon: Clock, 
-      action: 'timeline', 
-      color: 'text-purple-600',
-      show: true
-    },
-    { 
-      label: 'View Invoice', 
-      icon: Receipt, 
-      action: 'invoice',
-      color: 'text-green-600',
-      show: true
-    },
-    { 
-      label: 'View Quote', 
-      icon: Tag, 
-      action: 'quote', 
-      color: 'text-orange-600',
-      show: booking.pricingStatus === 'quoted' && booking.quotedPrice
-    },
+    }, 
     { 
       label: 'Update Price Quote', 
       icon: DollarSign, 
       action: 'price-quote', 
       color: `text-[${COLORS.primary}]`,
       show: true // Always show - can update quote anytime
-    },
-    { 
-      label: 'Accept Quote', 
-      icon: CheckCircle, 
-      action: 'accept', 
-      color: 'text-green-600',
-      show: canRespondToQuote(booking.status, booking.pricingStatus, quoteValid) && booking.quotedPrice
-    },
-    { 
-      label: 'Reject Quote', 
-      icon: XCircle, 
-      action: 'reject', 
-      color: 'text-red-600',
-      show: canRespondToQuote(booking.status, booking.pricingStatus, quoteValid) && booking.quotedPrice
-    },
-    { 
-      label: 'Cancel Booking', 
-      icon: XCircle, 
-      action: 'cancel', 
-      color: 'text-red-600',
-      show: canCancelBooking(booking.status)
-    },
-    { 
-      label: 'Download Documents', 
-      icon: Download, 
-      action: 'download', 
-      color: 'text-gray-600',
-      show: true
-    },
-    { 
-      label: 'Copy Tracking Link', 
-      icon: Link, 
-      action: 'share', 
-      color: 'text-green-600',
-      show: !!booking.trackingNumber
-    }
+    }, 
   ];
 
   return (
@@ -1401,29 +1345,7 @@ const BookingDetailsModal = ({ isOpen, onClose, booking }) => {
                         Copy
                       </Button>
                     </div>
-                  </div>
-
-                  <div className="border rounded-lg p-4">
-                    <p className="text-xs text-gray-500 mb-2">Public Tracking Link</p>
-                    <div className="flex items-center space-x-2">
-                      <Input
-                        value={`${window.location.origin}/track/${booking.trackingNumber}`}
-                        readOnly
-                        className="text-sm"
-                      />
-                      <Button
-                        size="sm"
-                        variant="light"
-                        onClick={() => {
-                          navigator.clipboard.writeText(`${window.location.origin}/track/${booking.trackingNumber}`);
-                          toast.success('Tracking link copied!');
-                        }}
-                        icon={<Copy className="h-4 w-4" />}
-                      >
-                        Copy
-                      </Button>
-                    </div>
-                  </div>
+                  </div> 
 
                   {booking.currentLocation && (
                     <div className="border rounded-lg p-4">
@@ -1713,6 +1635,7 @@ const QuoteDetailsModal = ({ isOpen, onClose, bookingId }) => {
 };
 
 // Collapsible Booking Card Component - FIXED: Added booking number and sender name, improved layout
+// Collapsible Booking Card Component - FIXED: Proper overflow handling for action menu
 const CollapsibleBookingCard = ({ booking, selectedBookings, setSelectedBookings, onViewDetails, onAction }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   
@@ -1722,12 +1645,12 @@ const CollapsibleBookingCard = ({ booking, selectedBookings, setSelectedBookings
   const bookingId = booking.bookingNumber || booking._id?.slice(-8).toUpperCase() || 'N/A';
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+    // REMOVED overflow-hidden from here - this was causing the menu to be cut off
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200">
       {/* Card Header - Always Visible */}
       <div className="px-4 py-3 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3 min-w-0">
-            {/* REMOVED SELECT ALL CHECKBOX */}
             <div 
               className="text-sm font-semibold cursor-pointer hover:underline text-[#E67E22] whitespace-nowrap"
               onClick={() => onViewDetails(booking)}
@@ -1749,6 +1672,7 @@ const CollapsibleBookingCard = ({ booking, selectedBookings, setSelectedBookings
             >
               <Eye className="h-4 w-4" />
             </button>
+            {/* ActionMenu now has proper z-index and won't be cut off */}
             <ActionMenu booking={booking} onAction={onAction} />
             <button
               onClick={() => setIsExpanded(!isExpanded)}
