@@ -1316,3 +1316,117 @@ export const getAllTrackings = async (params = {}) => {
     };
   }
 };
+// ==================== RETURN REQUEST API FUNCTIONS ====================
+
+/**
+ * REQUEST RETURN (Customer)
+ * POST /api/v1/shipments/:id/return-request
+ */
+export const requestReturn = async (shipmentId, returnData) => {
+  try {
+    console.log('🔄 Requesting return for shipment:', shipmentId);
+
+    const response = await axiosInstance.post(`/shipments/${shipmentId}/return-request`, returnData);
+
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message || 'Return request submitted successfully'
+      };
+    }
+
+    throw new Error(response.data.message || 'Failed to submit return request');
+
+  } catch (error) {
+    console.error('❌ Request return error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.error || error.message || 'Failed to submit return request',
+      error: error.response?.data
+    };
+  }
+};
+
+/**
+ * GET RETURN REQUEST STATUS (Customer)
+ * GET /api/v1/shipments/:id/return-status
+ */
+export const getReturnRequestStatus = async (shipmentId) => {
+  try {
+    console.log('📊 Getting return status for shipment:', shipmentId);
+
+    const response = await axiosInstance.get(`/shipments/${shipmentId}/return-status`);
+
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message || 'Return status fetched successfully'
+      };
+    }
+
+    throw new Error(response.data.message || 'Failed to fetch return status');
+
+  } catch (error) {
+    console.error('❌ Get return status error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.error || error.message || 'Failed to fetch return status',
+      error: error.response?.data
+    };
+  }
+};
+
+/**
+ * CAN REQUEST RETURN (Check if shipment is eligible for return)
+ */
+export const canRequestReturn = (shipment) => {
+  if (!shipment) return false;
+  
+  const eligibleStatuses = ['delivered', 'completed'];
+  if (!eligibleStatuses.includes(shipment.status)) return false;
+  
+  if (shipment.returnRequest && 
+      shipment.returnRequest.status !== 'none' && 
+      shipment.returnRequest.status !== 'rejected') {
+    return false;
+  }
+  
+  const deliveryDate = shipment.dates?.delivered || shipment.courier?.actualDeliveryDate;
+  if (deliveryDate) {
+    const daysSinceDelivery = Math.floor((Date.now() - new Date(deliveryDate)) / (1000 * 60 * 60 * 24));
+    if (daysSinceDelivery > 14) return false;
+  }
+  
+  return true;
+};
+
+/**
+ * GET RETURN REASON TEXT (Convert reason code to display text)
+ */
+export const getReturnReasonText = (reason) => {
+  const reasonTexts = {
+    'damaged_product': 'Damaged Product',
+    'wrong_product': 'Wrong Product Received',
+    'missing_items': 'Missing Items',
+    'delayed_delivery': 'Delayed Delivery',
+    'customer_cancellation': 'Customer Cancellation',
+    'other': 'Other Reason'
+  };
+  return reasonTexts[reason] || reason;
+};
+
+/**
+ * GET RETURN STATUS TEXT (Convert status code to display text)
+ */
+export const getReturnStatusText = (status) => {
+  const statusTexts = {
+    'none': 'No Return',
+    'pending': 'Pending Review',
+    'approved': 'Approved',
+    'rejected': 'Rejected',
+    'completed': 'Completed'
+  };
+  return statusTexts[status] || status;
+};

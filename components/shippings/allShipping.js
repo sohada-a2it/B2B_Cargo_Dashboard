@@ -1,4 +1,5 @@
-// components/shipments/AllShipments.jsx
+// components/shipments/AllShipments.jsx - আপডেটেড ট্র্যাকিং স্ট্যাটাস সহ
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -74,7 +75,8 @@ import {
   Cloud, CloudRain, CloudSnow, CloudLightning,
   Thermometer, Eye as EyeIcon, Shield, FileCheck,
   UserCog, Building2, Briefcase as BriefcaseIcon,
-  FolderOpen, FileText as FileTextIcon, HardDrive
+  FolderOpen, FileText as FileTextIcon, HardDrive,
+  Send, Flag, Award, Pause, RotateCcw, Layers
 } from 'lucide-react';
 
 // ==================== COLOR CONSTANTS ====================
@@ -92,7 +94,8 @@ const COLORS = {
   indigo: '#6366f1',
   orange: '#f97316',
   teal: '#14b8a6',
-  cyan: '#06b6d4'
+  cyan: '#06b6d4',
+  emerald: '#10b981'
 };
 
 // ==================== STATUS CONFIGURATION ====================
@@ -108,7 +111,7 @@ const STATUS_CONFIG = {
   },
   pending: {
     label: 'Pending',
-    color: 'bg-blue-50 text-blue-700 border-blue-200',
+    color: 'bg-yellow-50 text-yellow-700 border-yellow-200',
     icon: Clock,
     progress: 10,
     editable: true,
@@ -119,10 +122,82 @@ const STATUS_CONFIG = {
     label: 'Received at Warehouse',
     color: 'bg-orange-50 text-orange-700 border-orange-200',
     icon: Package,
-    progress: 25,
+    progress: 20,
     editable: true,
     cancellable: false,
     nextStatus: ['consolidation_in_progress']
+  },
+  picked_up_from_warehouse: {
+    label: 'Picked Up',
+    color: 'bg-blue-50 text-blue-700 border-blue-200',
+    icon: Truck,
+    progress: 15,
+    editable: true,
+    cancellable: false
+  },
+  inspected: {
+    label: 'Inspected',
+    color: 'bg-green-50 text-green-700 border-green-200',
+    icon: CheckCircle,
+    progress: 22,
+    editable: true,
+    cancellable: false
+  },
+  consolidating: {
+    label: 'Consolidating',
+    color: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    icon: Layers,
+    progress: 25,
+    editable: true,
+    cancellable: false
+  },
+  consolidated: {
+    label: 'Consolidated',
+    color: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+    icon: Layers,
+    progress: 30,
+    editable: true,
+    cancellable: false
+  },
+  ready_for_dispatch: {
+    label: 'Ready for Dispatch',
+    color: 'bg-purple-50 text-purple-700 border-purple-200',
+    icon: CheckCircle,
+    progress: 35,
+    editable: true,
+    cancellable: false
+  },
+  loaded_in_container: {
+    label: 'Loaded in Container',
+    color: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+    icon: Package,
+    progress: 40,
+    editable: true,
+    cancellable: false
+  },
+  dispatched: {
+    label: 'Dispatched',
+    color: 'bg-orange-100 text-orange-700 border-orange-200',
+    icon: Send,
+    progress: 45,
+    editable: true,
+    cancellable: false
+  },
+  departed_port_of_origin: {
+    label: 'Departed Origin Port',
+    color: 'bg-amber-50 text-amber-700 border-amber-200',
+    icon: Ship,
+    progress: 50,
+    editable: false,
+    cancellable: false
+  },
+  in_transit_sea_freight: {
+    label: 'In Transit (Sea)',
+    color: 'bg-cyan-50 text-cyan-700 border-cyan-200',
+    icon: Ship,
+    progress: 55,
+    editable: false,
+    cancellable: false
   },
   consolidation_in_progress: {
     label: 'Consolidation in Progress',
@@ -151,6 +226,14 @@ const STATUS_CONFIG = {
     cancellable: false,
     nextStatus: ['arrived_at_destination']
   },
+  arrived_at_destination_port: {
+    label: 'Arrived at Port',
+    color: 'bg-green-100 text-green-700 border-green-200',
+    icon: Flag,
+    progress: 70,
+    editable: false,
+    cancellable: false
+  },
   arrived_at_destination: {
     label: 'Arrived at Destination',
     color: 'bg-teal-50 text-teal-700 border-teal-200',
@@ -159,6 +242,14 @@ const STATUS_CONFIG = {
     editable: false,
     cancellable: false,
     nextStatus: ['customs_clearance']
+  },
+  customs_cleared: {
+    label: 'Customs Cleared',
+    color: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    icon: Shield,
+    progress: 80,
+    editable: false,
+    cancellable: false
   },
   customs_clearance: {
     label: 'Customs Clearance',
@@ -171,9 +262,9 @@ const STATUS_CONFIG = {
   },
   out_for_delivery: {
     label: 'Out for Delivery',
-    color: 'bg-purple-50 text-purple-700 border-purple-200',
+    color: 'bg-pink-50 text-pink-700 border-pink-200',
     icon: Navigation,
-    progress: 95,
+    progress: 90,
     editable: false,
     cancellable: false,
     nextStatus: ['delivered']
@@ -187,6 +278,30 @@ const STATUS_CONFIG = {
     cancellable: false,
     nextStatus: []
   },
+  completed: {
+    label: 'Completed',
+    color: 'bg-emerald-600 text-white border-emerald-600',
+    icon: Award,
+    progress: 100,
+    editable: false,
+    cancellable: false
+  },
+  damage_reported: {
+    label: 'Damage Reported',
+    color: 'bg-red-50 text-red-700 border-red-200',
+    icon: AlertCircle,
+    progress: 0,
+    editable: false,
+    cancellable: false
+  },
+  on_hold: {
+    label: 'On Hold',
+    color: 'bg-gray-100 text-gray-700 border-gray-200',
+    icon: Pause,
+    progress: 0,
+    editable: false,
+    cancellable: false
+  },
   cancelled: {
     label: 'Cancelled',
     color: 'bg-red-50 text-red-700 border-red-200',
@@ -195,6 +310,63 @@ const STATUS_CONFIG = {
     editable: false,
     cancellable: false,
     nextStatus: []
+  },
+  returned: {
+    label: 'Returned',
+    color: 'bg-orange-50 text-orange-700 border-orange-200',
+    icon: RotateCcw,
+    progress: 0,
+    editable: false,
+    cancellable: false
+  }
+};
+
+// ==================== TRACKING STATUS CONFIGURATION ====================
+const TRACKING_STATUS_CONFIG = {
+  pending: {
+    label: 'Pending Pickup',
+    color: 'bg-gray-100 text-gray-600',
+    icon: Clock
+  },
+  picked_up: {
+    label: 'Picked Up',
+    color: 'bg-blue-100 text-blue-600',
+    icon: Package
+  },
+  in_transit: {
+    label: 'In Transit',
+    color: 'bg-cyan-100 text-cyan-600',
+    icon: Truck
+  },
+  arrived_at_facility: {
+    label: 'Arrived at Facility',
+    color: 'bg-purple-100 text-purple-600',
+    icon: Building2
+  },
+  arrived_at_destination_port: {
+    label: 'Arrived at Port',
+    color: 'bg-teal-100 text-teal-600',
+    icon: Flag
+  },
+  customs_cleared: {
+    label: 'Customs Cleared',
+    color: 'bg-emerald-100 text-emerald-600',
+    icon: Shield
+  },
+  out_for_delivery: {
+    label: 'Out for Delivery',
+    color: 'bg-orange-100 text-orange-600',
+    icon: Navigation
+  },
+  delivered: {
+    label: 'Delivered',
+    color: 'bg-green-100 text-green-600',
+    icon: CheckCircleSolid
+  },
+  exception: {
+    label: 'Exception',
+    color: 'bg-red-100 text-red-600',
+    icon: AlertTriangle
   }
 };
 
@@ -325,7 +497,7 @@ const Input = ({
   );
 };
 
-// Select Component - KEPT BUT WILL NOT BE USED IN FILTERS
+// Select Component
 const Select = ({
   name,
   value,
@@ -449,6 +621,19 @@ const StatusBadge = ({ status, onClick, clickable = false, size = 'md' }) => {
   );
 };
 
+// Tracking Status Badge Component
+const TrackingStatusBadge = ({ trackingStatus }) => {
+  const config = TRACKING_STATUS_CONFIG[trackingStatus] || TRACKING_STATUS_CONFIG.pending;
+  const Icon = config.icon;
+  
+  return (
+    <span className={`inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium ${config.color}`}>
+      <Icon className="h-3 w-3 mr-1" />
+      {config.label}
+    </span>
+  );
+};
+
 // Shipment Mode Badge
 const ShipmentModeBadge = ({ mode }) => {
   const Icon = SHIPMENT_MODE_ICONS[mode] || Package;
@@ -505,9 +690,6 @@ const ActionMenu = ({ shipment, onAction }) => {
   }, []);
 
   if (!shipment) return null;
-
-  const isActive = isShipmentActive(shipment.status);
-  const progress = getShipmentProgress(shipment.status);
 
   const actions = [
     { 
@@ -760,9 +942,12 @@ const TrackingUpdateModal = ({ isOpen, onClose, shipment, onAdd }) => {
   if (!isOpen || !shipment) return null;
 
   const trackingStatusOptions = [
+    { value: 'pending', label: 'Pending Pickup' },
     { value: 'picked_up', label: 'Picked Up' },
     { value: 'in_transit', label: 'In Transit' },
     { value: 'arrived_at_facility', label: 'Arrived at Facility' },
+    { value: 'arrived_at_destination_port', label: 'Arrived at Port' },
+    { value: 'customs_cleared', label: 'Customs Cleared' },
     { value: 'out_for_delivery', label: 'Out for Delivery' },
     { value: 'delivered', label: 'Delivered' },
     { value: 'exception', label: 'Exception' }
@@ -1650,12 +1835,30 @@ const ShipmentDetailsModal = ({ isOpen, onClose, shipment }) => {
   const [costs, setCosts] = useState([]);
   const [timeline, setTimeline] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [trackingData, setTrackingData] = useState(null);
+  const [trackingLoading, setTrackingLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen && shipment) {
       fetchShipmentData();
+      fetchTrackingData();
     }
   }, [isOpen, shipment]);
+
+  const fetchTrackingData = async () => {
+    if (!shipment?.trackingNumber) return;
+    setTrackingLoading(true);
+    try {
+      const result = await trackShipmentByNumber(shipment.trackingNumber);
+      if (result.success) {
+        setTrackingData(result.data);
+      }
+    } catch (error) {
+      console.error('Tracking fetch error:', error);
+    } finally {
+      setTrackingLoading(false);
+    }
+  };
 
   const fetchShipmentData = async () => {
     setLoading(true);
@@ -1680,6 +1883,16 @@ const ShipmentDetailsModal = ({ isOpen, onClose, shipment }) => {
   const totalVolume = calculateTotalVolume(shipment.packages);
   const daysInTransit = getDaysInTransit(shipment.transport?.actualDeparture || shipment.transport?.estimatedDeparture);
   const onTrack = isOnTrack(shipment.transport?.estimatedArrival, shipment.actualDeliveryDate, shipment.status);
+  const progress = trackingData?.progress || getShipmentProgress(shipment.status);
+  const currentLocation = trackingData?.currentLocation || 'In Transit';
+
+  const tabs = [
+    { id: 'details', label: 'Details', icon: Package },
+    { id: 'packages', label: 'Packages', icon: Box },
+    { id: 'transport', label: 'Transport', icon: Truck },
+    { id: 'costs', label: 'Costs', icon: DollarSign },
+    { id: 'timeline', label: 'Timeline', icon: Activity }
+  ];
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Shipment Details" size="xl">
@@ -1690,25 +1903,38 @@ const ShipmentDetailsModal = ({ isOpen, onClose, shipment }) => {
             <h4 className="text-lg font-semibold text-gray-900">
               #{shipment.shipmentNumber || shipment._id?.slice(-8).toUpperCase()}
             </h4>
-            <p className="text-sm text-gray-500">
-              Tracking: {shipment.trackingNumber || 'Not assigned'}
-            </p>
-          </div> 
-        </div> 
+            {shipment.trackingNumber && (
+              <p className="text-sm text-gray-500">
+                Tracking: {shipment.trackingNumber}
+              </p>
+            )}
+          </div>
+          <StatusBadge status={shipment.status} size="lg" />
+        </div>
+
+        {/* Current Status Section */}
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700">Current Status</span>
+            <span className="text-xs text-gray-500">
+              Last updated: {trackingData?.lastUpdate ? formatShipmentDate(trackingData.lastUpdate, 'short') : formatShipmentDate(shipment.updatedAt, 'short')}
+            </span>
+          </div>
+          <div className="flex items-center space-x-2 mb-3">
+            <MapPin className="h-4 w-4 text-gray-400" />
+            <span className="text-sm text-gray-600">{currentLocation}</span>
+          </div>
+          <ProgressBar progress={progress} showLabel />
+        </div>
 
         {/* Tabs */}
         <div className="border-b border-gray-200">
-          <nav className="flex space-x-4">
-            {[
-              { id: 'details', label: 'Details', icon: Package },
-              { id: 'packages', label: 'Packages', icon: Box },
-              { id: 'transport', label: 'Transport', icon: Truck },
-              { id: 'costs', label: 'Costs', icon: DollarSign }, 
-            ].map(tab => (
+          <nav className="flex space-x-4 overflow-x-auto">
+            {tabs.map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors flex items-center ${
+                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors flex items-center whitespace-nowrap ${
                   activeTab === tab.id
                     ? `border-[${COLORS.primary}] text-[${COLORS.primary}]`
                     : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -2042,18 +2268,32 @@ const ShipmentDetailsModal = ({ isOpen, onClose, shipment }) => {
 
               {activeTab === 'timeline' && (
                 <div className="space-y-4">
-                  {timeline.length > 0 ? (
+                  {trackingLoading || loading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin" style={{ color: COLORS.primary }} />
+                    </div>
+                  ) : (trackingData?.timeline?.length > 0 || timeline.length > 0) ? (
                     <div className="relative">
-                      {timeline.map((event, index) => (
+                      {(trackingData?.timeline || timeline).map((event, index) => (
                         <div key={index} className="flex items-start space-x-3 mb-4">
                           <div className="flex-shrink-0">
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                              event.status === 'delivered' || event.status === 'completed' ? 'bg-green-100' :
+                              event.status === 'arrived_at_destination_port' ? 'bg-teal-100' :
+                              event.status === 'customs_cleared' ? 'bg-emerald-100' :
+                              event.status === 'out_for_delivery' ? 'bg-pink-100' :
+                              event.status === 'in_transit' ? 'bg-cyan-100' :
                               event.type === 'status' ? 'bg-blue-100' :
                               event.type === 'tracking' ? 'bg-green-100' :
                               event.type === 'note' ? 'bg-purple-100' :
                               event.type === 'cost' ? 'bg-yellow-100' :
                               'bg-gray-100'
                             }`}>
+                              {event.status === 'delivered' && <CheckCircleSolid className="h-4 w-4 text-green-600" />}
+                              {event.status === 'arrived_at_destination_port' && <Flag className="h-4 w-4 text-teal-600" />}
+                              {event.status === 'customs_cleared' && <Shield className="h-4 w-4 text-emerald-600" />}
+                              {event.status === 'out_for_delivery' && <Truck className="h-4 w-4 text-pink-600" />}
+                              {event.status === 'in_transit' && <Truck className="h-4 w-4 text-cyan-600" />}
                               {event.type === 'status' && <Activity className="h-4 w-4 text-blue-600" />}
                               {event.type === 'tracking' && <MapPin className="h-4 w-4 text-green-600" />}
                               {event.type === 'note' && <MessageSquare className="h-4 w-4 text-purple-600" />}
@@ -2061,33 +2301,31 @@ const ShipmentDetailsModal = ({ isOpen, onClose, shipment }) => {
                               {event.type === 'document' && <FileText className="h-4 w-4 text-gray-600" />}
                             </div>
                           </div>
-                          <div className="flex-1">
-                            <div className="bg-gray-50 rounded-lg p-3">
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <p className="text-sm font-medium text-gray-900">
-                                    {event.title || getShipmentStatusDisplayText(event.status)}
+                          <div className="flex-1 bg-gray-50 rounded-lg p-3">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">
+                                  {event.statusLabel || getShipmentStatusDisplayText(event.status) || event.title || 'Update'}
+                                </p>
+                                {event.description && (
+                                  <p className="text-xs text-gray-600 mt-1">{event.description}</p>
+                                )}
+                                {event.location && (
+                                  <p className="text-xs text-gray-500 mt-1 flex items-center">
+                                    <MapPin className="h-3 w-3 mr-1" />
+                                    {event.location}
                                   </p>
-                                  {event.description && (
-                                    <p className="text-xs text-gray-600 mt-1">{event.description}</p>
-                                  )}
-                                  {event.location && (
-                                    <p className="text-xs text-gray-500 mt-1 flex items-center">
-                                      <MapPin className="h-3 w-3 mr-1" />
-                                      {event.location}
-                                    </p>
-                                  )}
-                                </div>
-                                <p className="text-xs text-gray-400">
-                                  {formatShipmentDate(event.timestamp || event.createdAt, 'long')}
-                                </p>
+                                )}
                               </div>
-                              {event.updatedBy && (
-                                <p className="text-xs text-gray-400 mt-2">
-                                  By: {event.updatedBy}
-                                </p>
-                              )}
+                              <p className="text-xs text-gray-400">
+                                {formatShipmentDate(event.timestamp || event.date || event.createdAt, 'long')}
+                              </p>
                             </div>
+                            {event.updatedBy && (
+                              <p className="text-xs text-gray-400 mt-2">
+                                By: {event.updatedBy}
+                              </p>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -2195,7 +2433,7 @@ export default function ShipmentsPage() {
     pages: 1
   });
 
-  // Filter State - REMOVED status and mode from filters
+  // Filter State
   const [filters, setFilters] = useState({
     page: 1,
     limit: 20,
@@ -2280,12 +2518,11 @@ export default function ShipmentsPage() {
     }
   };
 
-  // Handle Search - MODIFIED to search by shipment number only
+  // Handle Search
   const handleSearch = (e) => {
     const searchValue = e.target.value;
     setFilters(prev => ({ ...prev, search: searchValue, page: 1 }));
     
-    // Also filter locally for immediate feedback
     if (searchValue.trim() === '') {
       setFilteredShipments(shipments);
     } else {
@@ -2356,7 +2593,6 @@ export default function ShipmentsPage() {
         break;
       case 'download':
         try {
-          // Download all documents
           if (shipment.documents && shipment.documents.length > 0) {
             toast.info('Download feature coming soon');
           } else {
@@ -2553,7 +2789,6 @@ export default function ShipmentsPage() {
   const filterByStatus = (status) => {
     setActiveStat(status);
     
-    // Filter shipments by status locally
     if (status === 'all') {
       setFilteredShipments(shipments);
     } else {
@@ -2561,7 +2796,6 @@ export default function ShipmentsPage() {
       setFilteredShipments(filtered);
     }
     
-    // Also update search filter if needed
     if (status !== 'all') {
       setFilters(prev => ({ ...prev, page: 1 }));
     }
@@ -2573,6 +2807,21 @@ export default function ShipmentsPage() {
     { key: 'active', label: 'Active', value: stats.active, icon: Activity, color: 'bg-blue-100 text-blue-600' }, 
     { key: 'cancelled', label: 'Cancelled', value: stats.cancelled, icon: XCircleSolid, color: 'bg-red-100 text-red-600' }
   ];
+
+  // Helper function to get tracking status from shipment
+  const getTrackingStatus = (shipment) => {
+    if (shipment.trackingUpdates && shipment.trackingUpdates.length > 0) {
+      const lastUpdate = shipment.trackingUpdates[shipment.trackingUpdates.length - 1];
+      return lastUpdate.status;
+    }
+    if (shipment.status === 'delivered') return 'delivered';
+    if (shipment.status === 'in_transit') return 'in_transit';
+    if (shipment.status === 'out_for_delivery') return 'out_for_delivery';
+    if (shipment.status === 'arrived_at_destination_port') return 'arrived_at_destination_port';
+    if (shipment.status === 'customs_cleared') return 'customs_cleared';
+    if (shipment.status === 'cancelled') return 'exception';
+    return 'pending';
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -2635,7 +2884,7 @@ export default function ShipmentsPage() {
           </div>
         )}
 
-        {/* Search and Filters - REMOVED status and mode select options */}
+        {/* Search and Filters */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
           <div className="p-4">
             <div className="flex items-center space-x-2">
@@ -2678,8 +2927,6 @@ export default function ShipmentsPage() {
                 icon={<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />}
               />
             </div>
-
-           
           </div>
         </div>
 
@@ -2745,7 +2992,10 @@ export default function ShipmentsPage() {
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Packages
-                  </th> 
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
                   </th>
@@ -2754,7 +3004,7 @@ export default function ShipmentsPage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan="7" className="px-4 py-8 text-center">
+                    <td colSpan="9" className="px-4 py-8 text-center">
                       <div className="flex items-center justify-center">
                         <Loader2 className="h-6 w-6 animate-spin" style={{ color: COLORS.primary }} />
                         <span className="ml-2 text-sm text-gray-500">Loading shipments...</span>
@@ -2763,11 +3013,10 @@ export default function ShipmentsPage() {
                   </tr>
                 ) : filteredShipments.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="px-4 py-8 text-center">
+                    <td colSpan="9" className="px-4 py-8 text-center">
                       <div className="flex flex-col items-center">
                         <Package className="h-12 w-12 text-gray-400 mb-3" />
                         <p className="text-sm text-gray-500">No shipments found</p>
-                       
                       </div>
                     </td>
                   </tr>
@@ -2775,6 +3024,7 @@ export default function ShipmentsPage() {
                   filteredShipments.map((shipment) => {
                     const totalWeight = calculateTotalWeight(shipment.packages);
                     const progress = getShipmentProgress(shipment.status);
+                    const trackingStatus = getTrackingStatus(shipment);
                     
                     return (
                       <tr 
@@ -2836,8 +3086,14 @@ export default function ShipmentsPage() {
                               {formatWeight(totalWeight)}
                             </div>
                           </div>
-                        </td> 
-                        <td className="px-4 py-3"> 
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col space-y-1">
+                            <StatusBadge status={shipment.status} size="sm" />
+                            <div className="w-24">
+                              <ProgressBar progress={progress} />
+                            </div>
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <ActionMenu shipment={shipment} onAction={handleAction} />

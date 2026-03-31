@@ -1193,7 +1193,7 @@ const ConsolidationCard = ({
             className="px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700 flex items-center"
           >
             <Package className="h-3 w-3 mr-1" />
-            Complete
+            In Progress
           </button>
         );
       case 'consolidated':
@@ -1203,7 +1203,7 @@ const ConsolidationCard = ({
             className="px-2 py-1 bg-orange-600 text-white rounded text-xs hover:bg-orange-700 flex items-center"
           >
             <Send className="h-3 w-3 mr-1" />
-            Ready
+            Ready 
           </button>
         );
       case 'ready_for_dispatch':
