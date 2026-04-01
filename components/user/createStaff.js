@@ -72,16 +72,12 @@ const CreateUserPage = () => {
   const [errors, setErrors] = useState({});
 
   const departments = [
-    'Engineering',
-    'Marketing',
-    'Sales',
-    'Human Resources',
-    'Finance',
-    'Operations',
-    'Customer Support',
-    'IT',
-    'Research & Development',
-    'Legal'
+    'operations',      // Operations Department
+      'customer_service', // Customer Service
+      'finance',         // Finance Department
+      'warehouse',       // Warehouse/Logistics
+      'sales',           // Sales Department
+      'marketing',  
   ];
 
   const permissions = [

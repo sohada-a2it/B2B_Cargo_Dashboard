@@ -452,6 +452,7 @@ const CourierBadge = ({ company, serviceType }) => {
 };
 
 // Action Menu Component - FIXED: Added z-index and proper positioning to prevent cutting
+// ActionMenu কম্পোনেন্ট আপডেট করুন
 const ActionMenu = ({ booking, onAction }) => {
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef(null);
@@ -468,7 +469,21 @@ const ActionMenu = ({ booking, onAction }) => {
 
   if (!booking) return null;
 
-  const quoteValid = booking.quotedPrice ? isQuoteValid(booking.quotedPrice) : false;
+  // ✅ রিয়েল-টাইম validity চেক
+  const quoteValid = (() => {
+    if (!booking.quotedPrice || !booking.quotedPrice.validUntil) return false;
+    const now = new Date();
+    const validUntil = new Date(booking.quotedPrice.validUntil);
+    return now <= validUntil;
+  })();
+  
+  const actualPricingStatus = (() => {
+    if (!booking.quotedPrice) return booking.pricingStatus;
+    if (booking.pricingStatus === 'quoted') {
+      return quoteValid ? 'quoted' : 'expired';
+    }
+    return booking.pricingStatus;
+  })();
 
   const actions = [
     { 
@@ -484,7 +499,7 @@ const ActionMenu = ({ booking, onAction }) => {
       action: 'price-quote', 
       color: `text-[${COLORS.primary}]`,
       show: true // Always show - can update quote anytime
-    }, 
+    },
   ];
 
   return (
@@ -614,6 +629,7 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
 };
 
 // Price Quote Modal
+// Price Quote Modal - আপডেটেড ভার্সন (Destination অনুযায়ী Auto Currency)
 const PriceQuoteModal = ({ isOpen, onClose, booking, onSave }) => {
   const [formData, setFormData] = useState({
     amount: '',
@@ -632,6 +648,48 @@ const PriceQuoteModal = ({ isOpen, onClose, booking, onSave }) => {
   });
   const [loading, setLoading] = useState(false);
 
+  // Destination অনুযায়ী Currency এবং Symbol
+  const getCurrencyByDestination = (destination) => {
+    const currencyMap = {
+      'USA': { code: 'USD', symbol: '$', name: 'US Dollar', flag: '🇺🇸' },
+      'UK': { code: 'GBP', symbol: '£', name: 'British Pound', flag: '🇬🇧' },
+      'Canada': { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar', flag: '🇨🇦' }, 
+    };
+    
+    // Destination থেকে দেশের নাম বের করুন
+    let country = destination;
+    if (destination?.includes('USA') || destination?.includes('United States')) country = 'USA';
+    if (destination?.includes('UK') || destination?.includes('United Kingdom')) country = 'UK';
+    if (destination?.includes('Canada')) country = 'Canada';
+    if (destination?.includes('UAE') || destination?.includes('Dubai')) country = 'UAE';
+    if (destination?.includes('Australia')) country = 'Australia';
+    if (destination?.includes('Europe') || destination?.includes('Germany') || destination?.includes('France')) country = 'EU';
+    if (destination?.includes('China')) country = 'China';
+    if (destination?.includes('India')) country = 'India';
+    if (destination?.includes('Bangladesh')) country = 'Bangladesh';
+    if (destination?.includes('Thailand')) country = 'Thailand';
+    
+    return currencyMap[country] || { code: 'USD', symbol: '$', name: 'US Dollar', flag: '🇺🇸' };
+  };
+
+  // Get destination from booking
+  const destination = booking?.shipmentDetails?.destination || booking?.destination || 'USA';
+  const defaultCurrency = getCurrencyByDestination(destination);
+
+  // Update currency when destination changes
+  useEffect(() => {
+    if (booking) {
+      const dest = booking.shipmentDetails?.destination || booking?.destination || 'USA';
+      const currencyInfo = getCurrencyByDestination(dest);
+      
+      // Set default currency based on destination
+      setFormData(prev => ({
+        ...prev,
+        currency: currencyInfo.code
+      }));
+    }
+  }, [booking]);
+
   useEffect(() => {
     if (booking) {
       const defaultValidUntil = new Date();
@@ -639,7 +697,7 @@ const PriceQuoteModal = ({ isOpen, onClose, booking, onSave }) => {
       
       setFormData({
         amount: booking.quotedPrice?.amount || '',
-        currency: booking.quotedPrice?.currency || 'USD',
+        currency: booking.quotedPrice?.currency || getCurrencyByDestination(booking.shipmentDetails?.destination || 'USA').code,
         validUntil: booking.quotedPrice?.validUntil 
           ? new Date(booking.quotedPrice.validUntil).toISOString().split('T')[0]
           : defaultValidUntil.toISOString().split('T')[0],
@@ -670,6 +728,10 @@ const PriceQuoteModal = ({ isOpen, onClose, booking, onSave }) => {
         [field]: parseFloat(value) || 0
       }
     }));
+  };
+
+  const handleCurrencyChange = (currencyCode) => {
+    setFormData(prev => ({ ...prev, currency: currencyCode }));
   };
 
   const handleSubmit = async (e) => {
@@ -707,11 +769,47 @@ const PriceQuoteModal = ({ isOpen, onClose, booking, onSave }) => {
     }
   };
 
+  // Available currencies with symbols
+  const availableCurrencies = [
+    { code: 'USD', symbol: '$', name: 'US Dollar', flag: '🇺🇸' },
+    { code: 'GBP', symbol: '£', name: 'British Pound', flag: '🇬🇧' },
+    { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar', flag: '🇨🇦' }, 
+  ];
+
+  const currentCurrency = availableCurrencies.find(c => c.code === formData.currency) || availableCurrencies[0];
+  const destinationCurrency = getCurrencyByDestination(destination);
+  const isDestinationCurrency = formData.currency === destinationCurrency.code;
+
   if (!isOpen || !booking) return null;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Update Price Quote" size="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Destination Info with Currency Suggestion */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <MapPin className="h-4 w-4 text-blue-600 mr-2" />
+              <span className="text-sm font-medium text-blue-800">Destination: {destination}</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="text-sm font-medium text-blue-800">
+                {destinationCurrency.flag} {destinationCurrency.name}
+              </span>
+              {!isDestinationCurrency && (
+                <button
+                  type="button"
+                  onClick={() => handleCurrencyChange(destinationCurrency.code)}
+                  className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
+                >
+                  Use {destinationCurrency.symbol}{destinationCurrency.code}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Amount Section with Currency Icon */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Amount <span className="text-red-500">*</span>
@@ -719,7 +817,7 @@ const PriceQuoteModal = ({ isOpen, onClose, booking, onSave }) => {
           <div className="flex items-center space-x-2">
             <div className="relative flex-1">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <span className="text-gray-500">$</span>
+                <span className="text-gray-500 text-lg font-medium">{currentCurrency.symbol}</span>
               </div>
               <input
                 type="number"
@@ -728,26 +826,42 @@ const PriceQuoteModal = ({ isOpen, onClose, booking, onSave }) => {
                 onChange={handleChange}
                 step="0.01"
                 min="0"
-                className="w-full pl-8 pr-3 py-2 text-sm border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E67E22] focus:border-transparent"
+                className="w-full pl-12 pr-3 py-2 text-sm border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E67E22] focus:border-transparent"
                 placeholder="0.00"
                 required
               />
             </div>
-            <select
-              name="currency"
-              value={formData.currency}
-              onChange={handleChange}
-              className="w-24 px-3 py-2 text-sm border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E67E22] focus:border-transparent bg-white"
-            >
-              <option value="USD">USD</option>
-              <option value="GBP">GBP</option>
-              <option value="CAD">CAD</option>
-              <option value="THB">THB</option>
-              <option value="CNY">CNY</option>
-            </select>
+            <div className="relative">
+              <select
+                name="currency"
+                value={formData.currency}
+                onChange={handleChange}
+                className="px-3 py-2 text-sm border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E67E22] focus:border-transparent bg-white appearance-none pr-8"
+              >
+                {availableCurrencies.map(curr => (
+                  <option key={curr.code} value={curr.code}>
+                    {curr.flag} {curr.code} ({curr.symbol})
+                  </option>
+                ))}
+              </select>
+              <div className="absolute inset-y-0 right-0 pr-2 flex items-center pointer-events-none">
+                <ChevronDown className="h-4 w-4 text-gray-400" />
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-xs text-gray-500">
+              Currency: {currentCurrency.name} ({currentCurrency.symbol})
+            </p>
+            {!isDestinationCurrency && (
+              <p className="text-xs text-amber-600">
+                ⚠️ Destination uses {destinationCurrency.symbol}{destinationCurrency.code}
+              </p>
+            )}
           </div>
         </div>
 
+        {/* Valid Until */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Valid Until <span className="text-red-500">*</span>
@@ -762,82 +876,122 @@ const PriceQuoteModal = ({ isOpen, onClose, booking, onSave }) => {
           />
         </div>
 
+        {/* Price Breakdown */}
         <div className="border rounded-lg p-4 bg-gray-50">
-          <h4 className="text-sm font-medium text-gray-700 mb-3">Price Breakdown</h4>
+          <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+            <DollarSign className="h-4 w-4 mr-1 text-[#E67E22]" />
+            Price Breakdown ({currentCurrency.symbol})
+          </h4>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-gray-500 mb-1">Base Rate</label>
-              <input
-                type="number"
-                value={formData.breakdown.baseRate}
-                onChange={(e) => handleBreakdownChange('baseRate', e.target.value)}
-                className="w-full px-3 py-1 text-sm border rounded-lg"
-                placeholder="0.00"
-              />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                  <span className="text-gray-400 text-xs">{currentCurrency.symbol}</span>
+                </div>
+                <input
+                  type="number"
+                  value={formData.breakdown.baseRate}
+                  onChange={(e) => handleBreakdownChange('baseRate', e.target.value)}
+                  className="w-full pl-6 pr-2 py-1 text-sm border rounded-lg"
+                  placeholder="0.00"
+                />
+              </div>
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Weight Charge</label>
-              <input
-                type="number"
-                value={formData.breakdown.weightCharge}
-                onChange={(e) => handleBreakdownChange('weightCharge', e.target.value)}
-                className="w-full px-3 py-1 text-sm border rounded-lg"
-                placeholder="0.00"
-              />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                  <span className="text-gray-400 text-xs">{currentCurrency.symbol}</span>
+                </div>
+                <input
+                  type="number"
+                  value={formData.breakdown.weightCharge}
+                  onChange={(e) => handleBreakdownChange('weightCharge', e.target.value)}
+                  className="w-full pl-6 pr-2 py-1 text-sm border rounded-lg"
+                  placeholder="0.00"
+                />
+              </div>
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Fuel Surcharge</label>
-              <input
-                type="number"
-                value={formData.breakdown.fuelSurcharge}
-                onChange={(e) => handleBreakdownChange('fuelSurcharge', e.target.value)}
-                className="w-full px-3 py-1 text-sm border rounded-lg"
-                placeholder="0.00"
-              />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                  <span className="text-gray-400 text-xs">{currentCurrency.symbol}</span>
+                </div>
+                <input
+                  type="number"
+                  value={formData.breakdown.fuelSurcharge}
+                  onChange={(e) => handleBreakdownChange('fuelSurcharge', e.target.value)}
+                  className="w-full pl-6 pr-2 py-1 text-sm border rounded-lg"
+                  placeholder="0.00"
+                />
+              </div>
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Residential Surcharge</label>
-              <input
-                type="number"
-                value={formData.breakdown.residentialSurcharge}
-                onChange={(e) => handleBreakdownChange('residentialSurcharge', e.target.value)}
-                className="w-full px-3 py-1 text-sm border rounded-lg"
-                placeholder="0.00"
-              />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                  <span className="text-gray-400 text-xs">{currentCurrency.symbol}</span>
+                </div>
+                <input
+                  type="number"
+                  value={formData.breakdown.residentialSurcharge}
+                  onChange={(e) => handleBreakdownChange('residentialSurcharge', e.target.value)}
+                  className="w-full pl-6 pr-2 py-1 text-sm border rounded-lg"
+                  placeholder="0.00"
+                />
+              </div>
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Insurance</label>
-              <input
-                type="number"
-                value={formData.breakdown.insurance}
-                onChange={(e) => handleBreakdownChange('insurance', e.target.value)}
-                className="w-full px-3 py-1 text-sm border rounded-lg"
-                placeholder="0.00"
-              />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                  <span className="text-gray-400 text-xs">{currentCurrency.symbol}</span>
+                </div>
+                <input
+                  type="number"
+                  value={formData.breakdown.insurance}
+                  onChange={(e) => handleBreakdownChange('insurance', e.target.value)}
+                  className="w-full pl-6 pr-2 py-1 text-sm border rounded-lg"
+                  placeholder="0.00"
+                />
+              </div>
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Tax</label>
-              <input
-                type="number"
-                value={formData.breakdown.tax}
-                onChange={(e) => handleBreakdownChange('tax', e.target.value)}
-                className="w-full px-3 py-1 text-sm border rounded-lg"
-                placeholder="0.00"
-              />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                  <span className="text-gray-400 text-xs">{currentCurrency.symbol}</span>
+                </div>
+                <input
+                  type="number"
+                  value={formData.breakdown.tax}
+                  onChange={(e) => handleBreakdownChange('tax', e.target.value)}
+                  className="w-full pl-6 pr-2 py-1 text-sm border rounded-lg"
+                  placeholder="0.00"
+                />
+              </div>
             </div>
             <div className="col-span-2">
               <label className="block text-xs text-gray-500 mb-1">Other Charges</label>
-              <input
-                type="number"
-                value={formData.breakdown.otherCharges}
-                onChange={(e) => handleBreakdownChange('otherCharges', e.target.value)}
-                className="w-full px-3 py-1 text-sm border rounded-lg"
-                placeholder="0.00"
-              />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                  <span className="text-gray-400 text-xs">{currentCurrency.symbol}</span>
+                </div>
+                <input
+                  type="number"
+                  value={formData.breakdown.otherCharges}
+                  onChange={(e) => handleBreakdownChange('otherCharges', e.target.value)}
+                  className="w-full pl-6 pr-2 py-1 text-sm border rounded-lg"
+                  placeholder="0.00"
+                />
+              </div>
             </div>
           </div>
         </div>
 
+        {/* Notes */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Notes (Optional)
@@ -852,6 +1006,25 @@ const PriceQuoteModal = ({ isOpen, onClose, booking, onSave }) => {
           />
         </div>
 
+        {/* Total Preview */}
+        <div className="bg-gray-100 rounded-lg p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">Total Quote Amount:</span>
+            <span className="text-xl font-bold text-[#E67E22]">
+              {currentCurrency.symbol}{parseFloat(formData.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="flex items-center justify-between mt-1">
+            <span className="text-xs text-gray-500">In {currentCurrency.code} ({currentCurrency.name})</span>
+            {!isDestinationCurrency && (
+              <span className="text-xs text-amber-600">
+                ≈ {destinationCurrency.symbol}{(parseFloat(formData.amount || 0) * 1).toLocaleString()} {destinationCurrency.code}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Action Buttons */}
         <div className="flex justify-end space-x-3 pt-4 border-t">
           <button
             type="button"
@@ -871,7 +1044,10 @@ const PriceQuoteModal = ({ isOpen, onClose, booking, onSave }) => {
                 Saving...
               </>
             ) : (
-              'Save Quote'
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save Quote
+              </>
             )}
           </button>
         </div>
@@ -1640,14 +1816,30 @@ const CollapsibleBookingCard = ({ booking, selectedBookings, setSelectedBookings
   const [isExpanded, setIsExpanded] = useState(false);
   
   const packageTotals = calculatePackageTotals(booking.shipmentDetails?.packageDetails || []);
-  const quoteValid = booking.quotedPrice ? isQuoteValid(booking.quotedPrice) : false;
+  
+  // ✅ রিয়েল-টাইম quote validity চেক (API থেকে আসা ডেটা ওভাররাইড করে)
+  const quoteValid = (() => {
+    if (!booking.quotedPrice || !booking.quotedPrice.validUntil) return false;
+    const now = new Date();
+    const validUntil = new Date(booking.quotedPrice.validUntil);
+    return now <= validUntil;
+  })();
+  
+  // ✅ রিয়েল-টাইম pricing status (API থেকে আসা status ওভাররাইড করে)
+  const actualPricingStatus = (() => {
+    if (!booking.quotedPrice) return booking.pricingStatus;
+    if (booking.pricingStatus === 'quoted') {
+      return quoteValid ? 'quoted' : 'expired';
+    }
+    return booking.pricingStatus;
+  })();
+  
   const senderName = getSenderName(booking.sender);
   const bookingId = booking.bookingNumber || booking._id?.slice(-8).toUpperCase() || 'N/A';
 
   return (
-    // REMOVED overflow-hidden from here - this was causing the menu to be cut off
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200">
-      {/* Card Header - Always Visible */}
+      {/* Card Header */}
       <div className="px-4 py-3 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3 min-w-0">
@@ -1656,7 +1848,7 @@ const CollapsibleBookingCard = ({ booking, selectedBookings, setSelectedBookings
               onClick={() => onViewDetails(booking)}
               title={`Booking #${bookingId}`}
             >
-              #{bookingId}
+              {bookingId}
             </div>
             <div className="hidden sm:block text-sm text-gray-600 truncate max-w-[200px]">
               {senderName}
@@ -1672,7 +1864,6 @@ const CollapsibleBookingCard = ({ booking, selectedBookings, setSelectedBookings
             >
               <Eye className="h-4 w-4" />
             </button>
-            {/* ActionMenu now has proper z-index and won't be cut off */}
             <ActionMenu booking={booking} onAction={onAction} />
             <button
               onClick={() => setIsExpanded(!isExpanded)}
@@ -1684,7 +1875,7 @@ const CollapsibleBookingCard = ({ booking, selectedBookings, setSelectedBookings
           </div>
         </div>
         
-        {/* Mobile sender name - visible only on small screens */}
+        {/* Mobile sender name */}
         <div className="sm:hidden mt-1 text-xs text-gray-500 truncate">
           {senderName}
         </div>
@@ -1697,7 +1888,7 @@ const CollapsibleBookingCard = ({ booking, selectedBookings, setSelectedBookings
         )}
       </div>
 
-      {/* Compact View - Always Visible Basic Info */}
+      {/* Compact View */}
       <div className="px-4 py-2 bg-gray-50/50">
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center space-x-4 min-w-0">
@@ -1718,9 +1909,9 @@ const CollapsibleBookingCard = ({ booking, selectedBookings, setSelectedBookings
               <span className="text-gray-600">{packageTotals.totalWeight.toFixed(1)} kg</span>
             </div>
           </div>
-          <PricingStatusBadge status={booking.pricingStatus} />
+          {/* ✅ এখানে actualPricingStatus ব্যবহার করুন */}
+          <PricingStatusBadge status={actualPricingStatus} />
         </div>
-        {/* Mobile package info - visible only on small screens */}
         <div className="sm:hidden flex items-center space-x-2 mt-1 text-xs text-gray-500">
           <span>{packageTotals.totalPackages} pkg</span>
           <span>•</span>
@@ -1728,7 +1919,7 @@ const CollapsibleBookingCard = ({ booking, selectedBookings, setSelectedBookings
         </div>
       </div>
 
-      {/* Expanded View - Additional Details */}
+      {/* Expanded View */}
       {isExpanded && (
         <div className="p-4 border-t border-gray-100 space-y-4">
           {/* Sender & Receiver */}
@@ -1787,26 +1978,31 @@ const CollapsibleBookingCard = ({ booking, selectedBookings, setSelectedBookings
             </div>
           )}
 
-          {/* Quote Info */}
-          {booking.pricingStatus === 'quoted' && booking.quotedPrice && (
-            <div className="bg-orange-50 rounded-lg p-3">
+          {/* ✅ Quote Info - এখানে actualPricingStatus ব্যবহার করুন */}
+          {(actualPricingStatus === 'quoted' || actualPricingStatus === 'expired') && booking.quotedPrice && (
+            <div className={`rounded-lg p-3 ${actualPricingStatus === 'quoted' ? 'bg-green-50' : 'bg-red-50'}`}>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-orange-600">Quoted Amount</p>
-                  <p className="text-sm font-semibold text-orange-700">
+                  <p className={`text-xs ${actualPricingStatus === 'quoted' ? 'text-green-600' : 'text-red-600'}`}>
+                    {actualPricingStatus === 'quoted' ? 'Quoted Amount' : 'Expired Quote'}
+                  </p>
+                  <p className={`text-sm font-semibold ${actualPricingStatus === 'quoted' ? 'text-green-700' : 'text-red-700'}`}>
                     {formatCurrency(booking.quotedPrice.amount, booking.quotedPrice.currency)}
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-orange-600">Valid Until</p>
-                  <p className="text-xs text-orange-700">
+                  <p className={`text-xs ${actualPricingStatus === 'quoted' ? 'text-green-600' : 'text-red-600'}`}>
+                    Valid Until
+                  </p>
+                  <p className="text-xs text-gray-700">
                     {formatDate(booking.quotedPrice.validUntil)}
                   </p>
-                  {quoteValid ? (
+                  {actualPricingStatus === 'quoted' && (
                     <p className="text-xs text-green-600 mt-1">
                       {getQuoteDaysRemaining(booking.quotedPrice.validUntil)} days left
                     </p>
-                  ) : (
+                  )}
+                  {actualPricingStatus === 'expired' && (
                     <p className="text-xs text-red-600 mt-1">Expired</p>
                   )}
                 </div>
@@ -1895,73 +2091,94 @@ export default function BookingsPage() {
   }));
 
   // Fetch Bookings
-  const fetchBookings = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Prepare query parameters
-      const queryParams = {
-        page: filters.page,
-        limit: 10, // Fixed to 10 per page
-        sortBy: filters.sortBy,
-        sortOrder: filters.sortOrder
+  // fetchBookings ফাংশনটি এইভাবে আপডেট করুন
+const fetchBookings = useCallback(async () => {
+  setLoading(true);
+  try {
+    const queryParams = {
+      page: filters.page,
+      limit: 10,
+      sortBy: filters.sortBy,
+      sortOrder: filters.sortOrder
+    };
+    
+    if (filters.status) queryParams.status = filters.status;
+    if (filters.search) queryParams.search = filters.search;
+    if (filters.startDate) queryParams.startDate = filters.startDate;
+    if (filters.endDate) queryParams.endDate = filters.endDate;
+    
+    const response = await getAllBookings(queryParams);
+    if (response.success) {
+      let bookingsData = response.data || [];
+      
+      // ✅ গুরুত্বপূর্ণ: প্রতিটি booking এর quote validity রিয়েল-টাইম চেক করুন
+      const updatedBookings = bookingsData.map(booking => {
+        // যদি quote থাকে এবং pricingStatus 'quoted' হয়
+        if (booking.quotedPrice && booking.quotedPrice.validUntil && booking.pricingStatus === 'quoted') {
+          const now = new Date();
+          const validUntil = new Date(booking.quotedPrice.validUntil);
+          const isValid = now <= validUntil;
+          
+          // যদি expired হয়, তাহলে pricingStatus পরিবর্তন করুন
+          if (!isValid) {
+            console.log(`Booking ${booking.bookingNumber}: Quote expired on ${validUntil}`);
+            return {
+              ...booking,
+              pricingStatus: 'expired'
+            };
+          }
+        }
+        return booking;
+      });
+      
+      setBookings(updatedBookings);
+      setFilteredBookings(updatedBookings);
+      setPagination(response.pagination || {
+        total: 0,
+        page: 1,
+        limit: 10,
+        pages: 1
+      });
+      
+      // Calculate stats - with updated pricingStatus
+      const newStats = {
+        total: response.pagination?.total || updatedBookings.length || 0,
+        booking_requested: 0,
+        price_quoted: 0,
+        booking_confirmed: 0,
+        pending: 0,
+        received_at_warehouse: 0,
+        consolidation_in_progress: 0,
+        loaded_in_container: 0,
+        in_transit: 0,
+        arrived_at_destination: 0,
+        customs_clearance: 0,
+        out_for_delivery: 0,
+        delivered: 0,
+        cancelled: 0,
+        rejected: 0
       };
       
-      // Add filters only if they have values
-      if (filters.status) queryParams.status = filters.status;
-      if (filters.search) queryParams.search = filters.search;
-      if (filters.startDate) queryParams.startDate = filters.startDate;
-      if (filters.endDate) queryParams.endDate = filters.endDate;
-      
-      console.log('Fetching with params:', queryParams); // Debug log
-      
-      const response = await getAllBookings(queryParams);
-      if (response.success) {
-        setBookings(response.data || []);
-        setFilteredBookings(response.data || []);
-        setPagination(response.pagination || {
-          total: 0,
-          page: 1,
-          limit: 10,
-          pages: 1
+      if (updatedBookings.length > 0) {
+        updatedBookings.forEach(booking => {
+          // Use actual pricing status
+          let status = booking.status;
+          if (newStats.hasOwnProperty(status)) {
+            newStats[status]++;
+          }
         });
-        
-        // Calculate stats - FIXED: Count all statuses correctly
-        const newStats = {
-          total: response.pagination?.total || response.data?.length || 0,
-          booking_requested: 0,
-          price_quoted: 0,
-          booking_confirmed: 0,
-          pending: 0,
-          received_at_warehouse: 0,
-          consolidation_in_progress: 0,
-          loaded_in_container: 0,
-          in_transit: 0,
-          arrived_at_destination: 0,
-          customs_clearance: 0,
-          out_for_delivery: 0,
-          delivered: 0,
-          cancelled: 0,
-          rejected: 0
-        };
-        
-        if (response.data && response.data.length > 0) {
-          response.data.forEach(booking => {
-            if (newStats.hasOwnProperty(booking.status)) {
-              newStats[booking.status]++;
-            }
-          });
-        }
-        
-        setStats(newStats);
-      } else {
-        toast.error(response.message);
       }
-    } catch (error) {
-      toast.error(error.message || 'Failed to fetch bookings');
-    } finally {
-      setLoading(false);
+      
+      setStats(newStats);
+    } else {
+      toast.error(response.message);
     }
-  }, [filters]);
+  } catch (error) {
+    toast.error(error.message || 'Failed to fetch bookings');
+  } finally {
+    setLoading(false);
+  }
+}, [filters]);
 
   useEffect(() => {
     fetchBookings();
@@ -2075,19 +2292,23 @@ export default function BookingsPage() {
   };
 
   // Handle Save Price Quote
-  const handleSavePriceQuote = async (bookingId, quoteData) => {
-    try {
-      const result = await updatePriceQuote(bookingId, quoteData);
-      if (result.success) {
-        toast.success('Price quote updated successfully!');
-        fetchBookings();
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
-      toast.error('Failed to update price quote');
+  // Handle Save Price Quote
+const handleSavePriceQuote = async (bookingId, quoteData) => {
+  try {
+    const result = await updatePriceQuote(bookingId, quoteData);
+    if (result.success) {
+      toast.success('Price quote updated successfully!');
+      // ✅ গুরুত্বপূর্ণ: আপডেটের পর ডেটা রিফ্রেশ করুন
+      await fetchBookings();
+      // মোডাল বন্ধ করুন
+      setShowPriceQuoteModal(false);
+    } else {
+      toast.error(result.message);
     }
-  };
+  } catch (error) {
+    toast.error('Failed to update price quote');
+  }
+};
 
   // Handle Accept Quote
   const handleAcceptQuote = async (bookingId, notes) => {

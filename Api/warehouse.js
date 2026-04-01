@@ -198,7 +198,31 @@ export const getWarehouseReceipts = async (params = {}) => {
     };
   }
 };
-
+// 23. DELETE WAREHOUSE RECEIPT (Admin Only)
+export const deleteWarehouseReceipt = async (receiptId) => {
+  try {
+    const response = await axiosInstance.delete(`/receipts/${receiptId}`);
+    
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message || 'Receipt deleted successfully'
+      };
+    }
+    
+    throw new Error(response.data.message || 'Failed to delete receipt');
+    
+  } catch (error) {
+    console.error('❌ Delete warehouse receipt error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.error || error.message || 'Failed to delete receipt',
+      error: error.response?.data,
+      statusCode: error.response?.status
+    };
+  }
+};
 // 4. GET RECEIPT BY ID
 export const getReceiptById = async (receiptId) => {
   try {

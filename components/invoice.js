@@ -122,10 +122,10 @@ const getStatusTextPDF = (paymentStatus) => {
 const InvoicePDF = ({ invoice, companyInfo }) => {
   const defaultCompany = {
     name: 'B2B Logistics Group',
-    address: '123 Business Avenue, Commercial Area',
-    city: 'Dhaka, Bangladesh 1212',
-    phone: '+880 1234-567890',
-    email: 'info@b2blogistics.com'
+    address: '8825 STANFORD BLVD, SUITE 306, COLUMBIA, MD 21045, ',
+    city: 'USA',
+    phone: '+1-647-362-7735',
+    email: 'info@cargologisticscompany.com'
   };
   const info = companyInfo || defaultCompany;
 
@@ -1346,41 +1346,7 @@ export default function InvoicesPage() {
                 </p>
               </div>
             </div> 
-          </div>
-
-          {/* Stats */}
-          {stats && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-              <StatCard 
-                title="Total Invoices" 
-                value={stats.totalInvoices || 0} 
-                icon={Receipt} 
-                color="blue"
-                subtitle={`Amount: ${formatCurrency(stats.totalAmount || 0)}`}
-              />
-              <StatCard 
-                title="Paid" 
-                value={stats.byPaymentStatus?.paid || 0} 
-                icon={CheckCircle} 
-                color="green"
-                subtitle={`Amount: ${formatCurrency(stats.byPaymentStatus?.paidAmount || 0)}`}
-              />
-              <StatCard 
-                title="Pending" 
-                value={stats.byPaymentStatus?.pending || 0} 
-                icon={Clock} 
-                color="yellow"
-                subtitle={`Amount: ${formatCurrency(stats.byPaymentStatus?.pendingAmount || 0)}`}
-              />
-              <StatCard 
-                title="Overdue" 
-                value={stats.byPaymentStatus?.overdue || 0} 
-                icon={AlertCircle} 
-                color="red"
-                subtitle={`Amount: ${formatCurrency(stats.byPaymentStatus?.overdueAmount || 0)}`}
-              />
-            </div>
-          )}
+          </div> 
         </div>
 
         {/* Filters */}

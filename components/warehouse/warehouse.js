@@ -13,7 +13,8 @@ import {
   generateReceiptPDF, 
   formatLocation,
   getConditionDisplayText,
-  getConditionColor 
+  getConditionColor ,
+  deleteWarehouseReceipt
 } from '@/Api/warehouse';
 import { formatDate } from '@/Api/booking';
 import { 
@@ -1281,7 +1282,38 @@ export default function WarehousePage() {
     inspected: 0,
     damaged: 0
   });
+// পেইজের ভিতরে, useState-এর পরে এই স্টেট যোগ করুন
+const [showDeleteModal, setShowDeleteModal] = useState(false);
+const [receiptToDelete, setReceiptToDelete] = useState(null);
+const [deleting, setDeleting] = useState(false);
 
+// ডিলিট হ্যান্ডলার ফাংশন যোগ করুন
+const handleDeleteClick = (receipt) => {
+  setReceiptToDelete(receipt);
+  setShowDeleteModal(true);
+};
+
+const handleConfirmDelete = async () => {
+  if (!receiptToDelete) return;
+  
+  setDeleting(true);
+  try {
+    const result = await deleteWarehouseReceipt(receiptToDelete._id);
+    if (result.success) {
+      toast.success(result.message || 'Receipt deleted successfully');
+      setShowDeleteModal(false);
+      setReceiptToDelete(null);
+      loadData(); // Refresh the list
+    } else {
+      toast.error(result.message || 'Failed to delete receipt');
+    }
+  } catch (error) {
+    console.error('Delete error:', error);
+    toast.error(error.message || 'Failed to delete receipt');
+  } finally {
+    setDeleting(false);
+  }
+};
   useEffect(() => {
     loadData();
   }, [activeTab]);
@@ -1589,99 +1621,109 @@ export default function WarehousePage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredReceipts.map((receipt) => {
-                const status = STATUS_COLORS[receipt.status] || STATUS_COLORS.received;
-                const ConditionIcon = receipt.inspection?.condition === 'Good' ? CheckCircle : AlertOctagon;
-                const packages = receipt._packages || extractPackages(receipt);
-                const totalPackages = packages.reduce((sum, p) => sum + (p.quantity || 1), 0);
-                const totalWeight = packages.reduce((sum, p) => sum + ((p.weight || 0) * (p.quantity || 1)), 0);
+            
+{filteredReceipts.map((receipt) => {
+  const status = STATUS_COLORS[receipt.status] || STATUS_COLORS.received;
+  const ConditionIcon = receipt.inspection?.condition === 'Good' ? CheckCircle : AlertOctagon;
+  const packages = receipt._packages || extractPackages(receipt);
+  const totalPackages = packages.reduce((sum, p) => sum + (p.quantity || 1), 0);
+  const totalWeight = packages.reduce((sum, p) => sum + ((p.weight || 0) * (p.quantity || 1)), 0);
 
-                return (
-                  <div key={receipt._id} className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
-                    {/* Header */}
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center space-x-3">
-                        <div className={`p-2 ${status.bg} rounded-lg`}>
-                          <Package className={`h-5 w-5 ${status.text}`} />
-                        </div>
-                        <div>
-                          <div className="flex items-center space-x-2">
-                            <p className="text-sm font-medium text-gray-900">{receipt.receiptNumber}</p>
-                            <span className={`px-2 py-0.5 text-xs rounded-full ${status.bg} ${status.text}`}>
-                              {status.label}
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-500">{receipt.shipmentId?.trackingNumber || 'No tracking'}</p>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center space-x-1">
-                        <button
-                          onClick={() => handleViewDetails(receipt)}
-                          className="p-1.5 hover:bg-gray-100 rounded-lg"
-                          title="View Details"
-                        >
-                          <Eye className="h-4 w-4 text-gray-600" />
-                        </button> 
-                      </div>
-                    </div>
+  return (
+    <div key={receipt._id} className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center space-x-3">
+          <div className={`p-2 ${status.bg} rounded-lg`}>
+            <Package className={`h-5 w-5 ${status.text}`} />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <p className="text-sm font-medium text-gray-900">{receipt.receiptNumber}</p>
+              <span className={`px-2 py-0.5 text-xs rounded-full ${status.bg} ${status.text}`}>
+                {status.label}
+              </span>
+            </div>
+            <p className="text-xs text-gray-500">{receipt.shipmentId?.trackingNumber || 'No tracking'}</p>
+          </div>
+        </div>
+        
+        {/* Action Buttons */}
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={() => handleViewDetails(receipt)}
+            className="p-1.5 hover:bg-gray-100 rounded-lg"
+            title="View Details"
+          >
+            <Eye className="h-4 w-4 text-gray-600" />
+          </button>
+          {/* ✅ Delete Button - Admin Only */}
+          <button
+            onClick={() => handleDeleteClick(receipt)}
+            className="p-1.5 hover:bg-red-100 rounded-lg"
+            title="Delete Receipt"
+          >
+            <Trash2 className="h-4 w-4 text-red-500" />
+          </button>
+        </div>
+      </div>
 
-                    {/* Package Summary */}
-                    <div className="bg-blue-50 rounded-lg p-2 mb-2">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-medium text-blue-700">Packages: {packages.length}</span>
-                        <span className="text-blue-600">Items: {totalPackages}</span>
-                        <span className="text-blue-600">Weight: {totalWeight.toFixed(1)} kg</span>
-                      </div>
-                    </div>
+      {/* Package Summary */}
+      <div className="bg-blue-50 rounded-lg p-2 mb-2">
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-medium text-blue-700">Packages: {packages.length}</span>
+          <span className="text-blue-600">Items: {totalPackages}</span>
+          <span className="text-blue-600">Weight: {totalWeight.toFixed(1)} kg</span>
+        </div>
+      </div>
 
-                    {/* Customer Info */}
-                    <div className="flex items-center text-xs text-gray-600 mb-2">
-                      <User className="h-3.5 w-3.5 mr-1 text-gray-400" />
-                      {receipt.customerId?.companyName || `${receipt.customerId?.firstName || ''} ${receipt.customerId?.lastName || ''}`.trim() || 'Unknown Customer'}
-                    </div>
+      {/* Customer Info */}
+      <div className="flex items-center text-xs text-gray-600 mb-2">
+        <User className="h-3.5 w-3.5 mr-1 text-gray-400" />
+        {receipt.customerId?.companyName || `${receipt.customerId?.firstName || ''} ${receipt.customerId?.lastName || ''}`.trim() || 'Unknown Customer'}
+      </div>
 
-                    {/* Details Grid */}
-                    <div className="grid grid-cols-2 gap-2 mb-3">
-                      <div className="flex items-center text-xs text-gray-500">
-                        <Calendar className="h-3.5 w-3.5 mr-1 text-gray-400" />
-                        {formatDate(receipt.receivedDate)}
-                      </div>
-                      <div className="flex items-center text-xs text-gray-500">
-                        <MapPin className="h-3.5 w-3.5 mr-1 text-gray-400" />
-                        {receipt.storageLocation?.zone ? `Zone ${receipt.storageLocation.zone}` : 'Location N/A'}
-                      </div>
-                    </div>
+      {/* Details Grid */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="flex items-center text-xs text-gray-500">
+          <Calendar className="h-3.5 w-3.5 mr-1 text-gray-400" />
+          {formatDate(receipt.receivedDate || receipt.createdAt)}
+        </div>
+        <div className="flex items-center text-xs text-gray-500">
+          <MapPin className="h-3.5 w-3.5 mr-1 text-gray-400" />
+          {receipt.storageLocation?.zone ? `Zone ${receipt.storageLocation.zone}` : 'Location N/A'}
+        </div>
+      </div>
 
-                    {/* Footer */}
-                    <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                      <div className="flex items-center">
-                        <ConditionIcon className={`h-3.5 w-3.5 mr-1 ${
-                          receipt.inspection?.condition === 'Good' ? 'text-green-500' : 'text-yellow-500'
-                        }`} />
-                        <span className="text-xs text-gray-600">
-                          {getConditionDisplayText(receipt.inspection?.condition || 'Good')}
-                        </span>
-                      </div>
-                      {!receipt.inspection ? (
-                        <button
-                          onClick={() => handleInspectClick(receipt)}
-                          className="text-xs bg-[#E67E22] text-white px-3 py-1 rounded-lg hover:bg-[#d35400]"
-                        >
-                          Inspect
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleInspectClick(receipt)}
-                          className="text-xs bg-gray-100 text-gray-700 px-3 py-1 rounded-lg hover:bg-gray-200"
-                        >
-                          Re-inspect
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+      {/* Footer */}
+      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+        <div className="flex items-center">
+          <ConditionIcon className={`h-3.5 w-3.5 mr-1 ${
+            receipt.inspection?.condition === 'Good' ? 'text-green-500' : 'text-yellow-500'
+          }`} />
+          <span className="text-xs text-gray-600">
+            {getConditionDisplayText(receipt.inspection?.condition || 'Good')}
+          </span>
+        </div>
+        {!receipt.inspection ? (
+          <button
+            onClick={() => handleInspectClick(receipt)}
+            className="text-xs bg-[#E67E22] text-white px-3 py-1 rounded-lg hover:bg-[#d35400]"
+          >
+            Inspect
+          </button>
+        ) : (
+          <button
+            onClick={() => handleInspectClick(receipt)}
+            className="text-xs bg-gray-100 text-gray-700 px-3 py-1 rounded-lg hover:bg-gray-200"
+          >
+            Re-inspect
+          </button>
+        )}
+      </div>
+    </div>
+  );
+})}
             </div>
           )
         )}
@@ -1940,6 +1982,85 @@ export default function WarehousePage() {
           </div>
         </div>
       )}
+      {/* Delete Confirmation Modal */}
+{showDeleteModal && receiptToDelete && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-xl max-w-md w-full p-6">
+      <div className="text-center">
+        <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+          <Trash2 className="h-6 w-6 text-red-600" />
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Receipt</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Are you sure you want to delete receipt <strong>{receiptToDelete.receiptNumber}</strong>?
+          <br />
+          <span className="text-xs text-red-500 mt-1 block">
+            This action cannot be undone. All associated data will be permanently removed.
+          </span>
+        </p>
+        
+        {/* Receipt Summary */}
+        <div className="bg-gray-50 rounded-lg p-3 mb-4 text-left">
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <span className="text-gray-500">Tracking:</span>
+              <span className="ml-1 font-medium">{receiptToDelete.shipmentId?.trackingNumber || 'N/A'}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Status:</span>
+              <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs ${
+                receiptToDelete.status === 'inspected' ? 'bg-blue-100 text-blue-700' :
+                receiptToDelete.status === 'damaged_report' ? 'bg-red-100 text-red-700' :
+                'bg-green-100 text-green-700'
+              }`}>
+                {receiptToDelete.status || 'received'}
+              </span>
+            </div>
+            <div>
+              <span className="text-gray-500">Packages:</span>
+              <span className="ml-1 font-medium">{receiptToDelete._packages?.length || 0}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Date:</span>
+              <span className="ml-1 font-medium">{formatDate(receiptToDelete.createdAt)}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div className="flex space-x-3">
+          <button
+            onClick={() => setShowDeleteModal(false)}
+            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            disabled={deleting}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleConfirmDelete}
+            disabled={deleting}
+            className={`flex-1 px-4 py-2 rounded-lg flex items-center justify-center ${
+              deleting 
+                ? 'bg-gray-400 cursor-not-allowed' 
+                : 'bg-red-600 hover:bg-red-700 text-white'
+            }`}
+          >
+            {deleting ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Deleting...
+              </>
+            ) : (
+              <>
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete Permanently
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }

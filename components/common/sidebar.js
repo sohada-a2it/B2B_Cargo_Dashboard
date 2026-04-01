@@ -47,7 +47,7 @@ const MenuSkeleton = () => (
 
 // Logo Component
 const Logo = ({ collapsed }) => (
-  <div className={`flex items-center ${collapsed ? 'justify-center' : 'justify-start'} px-4 py-6`}>
+  <div className={`flex items-center ${collapsed ? 'justify-center' : 'justify-start'} px-4 py-8`}>
     <div className="relative">
       {collapsed ? (
         <div className="w-8 h-8 relative">
@@ -97,7 +97,7 @@ const menuItems = [
         roles: ['admin']
       },
       {
-        title: 'Create Staff',
+        title: 'Create User',
         path: '/users/create_staff',
         icon: <HiOutlinePlus className="w-4 h-4" />,
         roles: ['admin']
@@ -188,8 +188,8 @@ const menuItems = [
   {
     title: 'Information',
     path: '/shippings/invoice',
-    icon: <MdAttachMoney className="w-5 h-5" />,
-    activeIcon: <MdAttachMoney className="w-5 h-5" />, 
+    icon: <HiOutlineSearch className="w-5 h-5" />,
+    activeIcon: <HiOutlineSearch className="w-5 h-5" />, 
     roles: ['admin'],
     children: [ 
       {
@@ -429,22 +429,22 @@ const UserProfile = ({ collapsed, user, onLogout }) => {
               <p className="text-sm font-medium text-gray-700">{getDisplayName()}</p>
               <p className="text-xs text-gray-400">{user?.email}</p>
             </div>
-            <Link 
+            {/* <Link 
               href="/admin/profile" 
               className="flex items-center px-4 py-2 text-xs text-gray-600 hover:bg-orange-50 hover:text-[#E67E22]"
               onClick={() => setIsOpen(false)}
             >
               <HiOutlineUserGroup className="w-3.5 h-3.5 mr-2" />
               Profile
-            </Link>
-            <Link 
+            </Link> */}
+            {/* <Link 
               href="/admin/settings" 
               className="flex items-center px-4 py-2 text-xs text-gray-600 hover:bg-orange-50 hover:text-[#E67E22]"
               onClick={() => setIsOpen(false)}
             >
               <HiOutlineCog className="w-3.5 h-3.5 mr-2" />
               Settings
-            </Link>
+            </Link> */}
             <button 
               className="flex items-center px-4 py-2 text-xs text-red-600 hover:bg-red-50 w-full"
               onClick={handleLogoutClick}

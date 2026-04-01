@@ -1717,7 +1717,7 @@ export default function ShipmentsPage() {
             </div>
             <div className="flex items-center space-x-2">
               <Button variant="light" size="sm" onClick={() => setShowReturnRequestsModal(true)} icon={<Undo2 className="h-4 w-4" />}>Return Requests</Button>
-              <Button variant="light" size="sm" onClick={handleExport} icon={<ExportIcon className="h-4 w-4" />}>Export</Button>
+               
               <Button variant="light" size="sm" onClick={fetchShipments} icon={<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />} />
             </div>
           </div>

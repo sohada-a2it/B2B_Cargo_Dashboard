@@ -152,7 +152,7 @@ export const changePassword = async (currentPassword, newPassword) => {
 // Create Admin (Initial Setup)
 export const createAdmin = async (adminData) => {
   try {
-    const response = await axiosInstance.post('/users/admin/setup', adminData);
+    const response = await axiosInstance.post('/admin/setup', adminData);
     return response.data;
   } catch (error) {
     throw error.response?.data || { message: 'Failed to create admin' };

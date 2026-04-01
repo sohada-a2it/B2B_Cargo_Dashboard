@@ -370,7 +370,7 @@ const ShipmentItemCard = ({ item }) => {
 // ==================== SHIPMENT CARD (for shipments array) ====================   
 
 // ShipmentCard component - Add tracking status fetch
-// warehouse/consolidations/index.js - ShipmentCard Component Full Version
+// warehouse/consolidations/index.js - ShipmentCard কম্পোনেন্ট আপডেট করুন
 
 const ShipmentCard = ({ shipment, consolidationId, consolidationStatus, onShipmentUpdated }) => {
   const [expanded, setExpanded] = useState(false);
@@ -379,91 +379,8 @@ const ShipmentCard = ({ shipment, consolidationId, consolidationStatus, onShipme
   const [cancelReason, setCancelReason] = useState('');
   const [trackingData, setTrackingData] = useState(null);
   const [trackingLoading, setTrackingLoading] = useState(false);
-
-  // Auto-refresh when consolidation status changes
-  useEffect(() => {
-    console.log('🔄 Consolidation status changed, refreshing tracking:', consolidationStatus);
-    if (shipment?.trackingNumber) {
-      fetchTrackingStatus();
-    }
-  }, [consolidationStatus]);
-
-  // Auto-fetch tracking status on mount
-  useEffect(() => {
-    if (shipment?.trackingNumber) {
-      fetchTrackingStatus();
-    }
-  }, [shipment?.trackingNumber]);
-
-  // warehouse/consolidations/index.js - ShipmentCard-এর fetchTrackingStatus ফাংশন ঠিক করুন
-
-const fetchTrackingStatus = async () => {
-    if (!shipment?.trackingNumber) return;
-    
-    setTrackingLoading(true);
-    try {
-        console.log('📡 Fetching tracking for:', shipment.trackingNumber);
-        const result = await trackByNumber(shipment.trackingNumber);
-        console.log('📡 Tracking API Response:', result);
-        
-        if (result?.success && result?.data) {
-            // ✅ সঠিকভাবে data সেট করুন
-            setTrackingData({
-                trackingNumber: result.data.trackingNumber,
-                status: result.data.status,
-                currentStatus: {
-                    status: result.data.status,
-                    label: getStatusLabel(result.data.status),
-                    location: result.data.currentLocation || getLocationFromStatus(result.data.status),
-                    timestamp: result.data.lastUpdate || new Date().toISOString(),
-                    progress: result.data.progress || getProgressFromStatus(result.data.status)
-                },
-                estimatedDelivery: result.data.estimatedArrival,
-                location: result.data.currentLocation || getLocationFromStatus(result.data.status),
-                updatedAt: result.data.lastUpdate,
-                trackingHistory: result.data.timeline || shipment.milestones || []
-            });
-        } else {
-            // Fallback to shipment data
-            setTrackingData({
-                trackingNumber: shipment.trackingNumber,
-                status: shipment.status || 'pending',
-                currentStatus: {
-                    status: shipment.status || 'pending',
-                    label: getStatusLabel(shipment.status),
-                    location: getLocationFromStatus(shipment.status, shipment.currentLocation),
-                    timestamp: shipment.updatedAt || new Date().toISOString(),
-                    progress: getProgressFromStatus(shipment.status)
-                },
-                estimatedDelivery: shipment.estimatedArrivalDate,
-                location: getLocationFromStatus(shipment.status, shipment.currentLocation),
-                updatedAt: shipment.updatedAt,
-                trackingHistory: shipment.milestones || []
-            });
-        }
-    } catch (error) {
-        console.error('Tracking API error:', error);
-        setTrackingData({
-            trackingNumber: shipment.trackingNumber,
-            status: shipment.status || 'pending',
-            currentStatus: {
-                status: shipment.status || 'pending',
-                label: getStatusLabel(shipment.status),
-                location: getLocationFromStatus(shipment.status, shipment.currentLocation),
-                timestamp: shipment.updatedAt || new Date().toISOString(),
-                progress: getProgressFromStatus(shipment.status)
-            },
-            estimatedDelivery: shipment.estimatedArrivalDate,
-            location: getLocationFromStatus(shipment.status, shipment.currentLocation),
-            updatedAt: shipment.updatedAt,
-            trackingHistory: shipment.milestones || []
-        });
-    } finally {
-        setTrackingLoading(false);
-    }
-};
-
-  // Helper function to get status label
+  
+  // ✅ প্রথমে helper functions ডিক্লেয়ার করুন
   const getStatusLabel = (status) => {
     const labels = {
       'pending': 'Pending',
@@ -490,10 +407,8 @@ const fetchTrackingStatus = async () => {
     return labels[status] || status?.replace(/_/g, ' ') || 'Pending';
   };
 
-  // Helper function to get location from status
   const getLocationFromStatus = (status, currentLocation) => {
     if (currentLocation) return currentLocation;
-    
     const locations = {
       'arrived_at_destination_port': 'Destination Port',
       'arrived': 'Destination Port',
@@ -508,34 +423,117 @@ const fetchTrackingStatus = async () => {
     return locations[status] || 'Processing';
   };
 
-  // Progress based on status
- // warehouse/consolidations/index.js - getProgressFromStatus ফাংশন
-
-const getProgressFromStatus = (status) => {
+  const getProgressFromStatus = (status) => {
     const progressMap = {
-        'pending': 10,
-        'picked_up_from_warehouse': 20,
-        'received_at_warehouse': 25,
-        'pending_consolidation': 28,
-        'consolidating': 29,
-        'consolidated': 30,
-        'ready_for_dispatch': 35,
-        'loaded_in_container': 38,
-        'dispatched': 40,
-        'departed_port_of_origin': 45,
-        'in_transit': 50,
-        'in_transit_sea_freight': 50,
-        'arrived_at_destination_port': 70,
-        'arrived': 70,
-        'customs_cleared': 80,
-        'out_for_delivery': 90,
-        'delivered': 100,
-        'completed': 100,
-        'on_hold': 0,
-        'cancelled': 0
+      'pending': 10,
+      'picked_up_from_warehouse': 20,
+      'received_at_warehouse': 25,
+      'pending_consolidation': 28,
+      'consolidating': 29,
+      'consolidated': 30,
+      'ready_for_dispatch': 35,
+      'loaded_in_container': 38,
+      'dispatched': 40,
+      'departed_port_of_origin': 45,
+      'in_transit': 50,
+      'in_transit_sea_freight': 50,
+      'arrived_at_destination_port': 70,
+      'arrived': 70,
+      'customs_cleared': 80,
+      'out_for_delivery': 90,
+      'delivered': 100,
+      'completed': 100,
+      'on_hold': 0,
+      'cancelled': 0
     };
     return progressMap[status] || 30;
-};
+  };
+
+  // ✅ এখন useState ব্যবহার করুন (ফাংশন ডিক্লেয়ার করার পর)
+  const [currentStatus, setCurrentStatus] = useState(shipment.status);
+  const [currentLocation, setCurrentLocation] = useState(
+    shipment.currentLocation || getLocationFromStatus(shipment.status)
+  );
+  const [currentProgress, setCurrentProgress] = useState(
+    getProgressFromStatus(shipment.status)
+  );
+
+  // Update local state when shipment prop changes
+  useEffect(() => {
+    setCurrentStatus(shipment.status);
+    setCurrentLocation(shipment.currentLocation || getLocationFromStatus(shipment.status));
+    setCurrentProgress(getProgressFromStatus(shipment.status));
+  }, [shipment.status, shipment.currentLocation]);
+
+  // Auto-refresh when consolidation status changes
+  useEffect(() => {
+    console.log('🔄 Consolidation status changed, refreshing tracking:', consolidationStatus);
+    if (shipment?.trackingNumber) {
+      fetchTrackingStatus();
+    }
+  }, [consolidationStatus]);
+
+  // Auto-fetch tracking status on mount
+  useEffect(() => {
+    if (shipment?.trackingNumber) {
+      fetchTrackingStatus();
+    }
+  }, [shipment?.trackingNumber]);
+
+  const fetchTrackingStatus = async () => {
+    if (!shipment?.trackingNumber) return;
+    
+    setTrackingLoading(true);
+    try {
+      console.log('📡 Fetching tracking for:', shipment.trackingNumber);
+      const result = await trackByNumber(shipment.trackingNumber);
+      console.log('📡 Tracking API Response:', result);
+      
+      if (result?.success && result?.data) {
+        setTrackingData({
+          trackingNumber: result.data.trackingNumber,
+          status: result.data.status,
+          currentStatus: {
+            status: result.data.status,
+            label: getStatusLabel(result.data.status),
+            location: result.data.currentLocation || getLocationFromStatus(result.data.status),
+            timestamp: result.data.lastUpdate || new Date().toISOString(),
+            progress: result.data.progress || getProgressFromStatus(result.data.status)
+          },
+          estimatedDelivery: result.data.estimatedArrival,
+          location: result.data.currentLocation || getLocationFromStatus(result.data.status),
+          updatedAt: result.data.lastUpdate,
+          trackingHistory: result.data.timeline || shipment.milestones || []
+        });
+        
+        // Update local state with tracking data
+        setCurrentStatus(result.data.status);
+        setCurrentLocation(result.data.currentLocation || getLocationFromStatus(result.data.status));
+        setCurrentProgress(result.data.progress || getProgressFromStatus(result.data.status));
+      } else {
+        // Fallback to shipment data
+        setTrackingData({
+          trackingNumber: shipment.trackingNumber,
+          status: shipment.status,
+          currentStatus: {
+            status: shipment.status,
+            label: getStatusLabel(shipment.status),
+            location: getLocationFromStatus(shipment.status, shipment.currentLocation),
+            timestamp: shipment.updatedAt || new Date().toISOString(),
+            progress: getProgressFromStatus(shipment.status)
+          },
+          estimatedDelivery: shipment.estimatedArrivalDate,
+          location: getLocationFromStatus(shipment.status, shipment.currentLocation),
+          updatedAt: shipment.updatedAt,
+          trackingHistory: shipment.milestones || []
+        });
+      }
+    } catch (error) {
+      console.error('Tracking API error:', error);
+    } finally {
+      setTrackingLoading(false);
+    }
+  };
 
   const getDisplayStatus = () => {
     if (trackingLoading) {
@@ -548,181 +546,213 @@ const getProgressFromStatus = (status) => {
       };
     }
     
-    if (trackingData) {
-      const status = trackingData.currentStatus?.status || trackingData.status || shipment.status;
-      const label = trackingData.currentStatus?.label || getStatusLabel(status);
-      const progress = trackingData.currentStatus?.progress || getProgressFromStatus(status);
-      const location = trackingData.currentStatus?.location || trackingData.location || getLocationFromStatus(status);
-      
-      const statusColors = {
-        'delivered': 'bg-green-100 text-green-700 border-green-200',
-        'completed': 'bg-emerald-100 text-emerald-700 border-emerald-200',
-        'in_transit': 'bg-blue-100 text-blue-700 border-blue-200',
-        'in_transit_sea_freight': 'bg-blue-100 text-blue-700 border-blue-200',
-        'arrived_at_destination_port': 'bg-green-100 text-green-700 border-green-200',
-        'arrived': 'bg-green-100 text-green-700 border-green-200',
-        'customs_cleared': 'bg-emerald-100 text-emerald-700 border-emerald-200',
-        'out_for_delivery': 'bg-sky-100 text-sky-700 border-sky-200',
-        'dispatched': 'bg-orange-100 text-orange-700 border-orange-200',
-        'pending': 'bg-yellow-100 text-yellow-700 border-yellow-200',
-        'on_hold': 'bg-orange-100 text-orange-700 border-orange-200',
-        'cancelled': 'bg-red-100 text-red-700 border-red-200',
-        'ready_for_dispatch': 'bg-purple-100 text-purple-700 border-purple-200',
-        'loaded_in_container': 'bg-indigo-100 text-indigo-700 border-indigo-200'
-      };
-      
-      const statusIcons = {
-        'delivered': CheckCircle,
-        'completed': Award,
-        'in_transit': Truck,
-        'in_transit_sea_freight': Ship,
-        'arrived_at_destination_port': Flag,
-        'arrived': Flag,
-        'customs_cleared': Shield,
-        'out_for_delivery': Truck,
-        'dispatched': Send,
-        'pending': Clock,
-        'on_hold': Pause,
-        'cancelled': Ban,
-        'ready_for_dispatch': Send,
-        'loaded_in_container': Package
-      };
-      
-      return {
-        label: label,
-        color: statusColors[status] || 'bg-gray-100 text-gray-700 border-gray-200',
-        icon: statusIcons[status] || Package,
-        progress: progress,
-        location: location,
-        status: status,
-        iconClass: 'text-current'
-      };
-    }
+    const status = currentStatus;
+    const label = getStatusLabel(status);
+    const progress = currentProgress;
+    const location = currentLocation;
     
-    // Fallback
-    const status = shipment.status || 'pending';
+    const statusColors = {
+      'delivered': 'bg-green-100 text-green-700 border-green-200',
+      'completed': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      'in_transit': 'bg-blue-100 text-blue-700 border-blue-200',
+      'in_transit_sea_freight': 'bg-blue-100 text-blue-700 border-blue-200',
+      'arrived_at_destination_port': 'bg-green-100 text-green-700 border-green-200',
+      'arrived': 'bg-green-100 text-green-700 border-green-200',
+      'customs_cleared': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      'out_for_delivery': 'bg-sky-100 text-sky-700 border-sky-200',
+      'dispatched': 'bg-orange-100 text-orange-700 border-orange-200',
+      'pending': 'bg-yellow-100 text-yellow-700 border-yellow-200',
+      'on_hold': 'bg-orange-100 text-orange-700 border-orange-200',
+      'cancelled': 'bg-red-100 text-red-700 border-red-200',
+      'ready_for_dispatch': 'bg-purple-100 text-purple-700 border-purple-200',
+      'loaded_in_container': 'bg-indigo-100 text-indigo-700 border-indigo-200'
+    };
+    
+    const statusIcons = {
+      'delivered': CheckCircle,
+      'completed': Award,
+      'in_transit': Truck,
+      'in_transit_sea_freight': Ship,
+      'arrived_at_destination_port': Flag,
+      'arrived': Flag,
+      'customs_cleared': Shield,
+      'out_for_delivery': Truck,
+      'dispatched': Send,
+      'pending': Clock,
+      'on_hold': Pause,
+      'cancelled': Ban,
+      'ready_for_dispatch': Send,
+      'loaded_in_container': Package
+    };
+    
     return {
-      label: getStatusLabel(status),
-      color: 'bg-gray-100 text-gray-700 border-gray-200',
-      icon: Package,
-      progress: getProgressFromStatus(status),
-      location: getLocationFromStatus(status, shipment.currentLocation),
+      label: label,
+      color: statusColors[status] || 'bg-gray-100 text-gray-700 border-gray-200',
+      icon: statusIcons[status] || Package,
+      progress: progress,
+      location: location,
       status: status,
-      iconClass: 'text-gray-500'
+      iconClass: 'text-current'
     };
   };
 
   const display = getDisplayStatus();
   const StatusIcon = display.icon;
-  
-  const currentLocation = display.location;
-  const estimatedDelivery = trackingData?.estimatedDelivery || shipment.estimatedArrivalDate;
-  const lastUpdate = trackingData?.currentStatus?.timestamp || trackingData?.updatedAt || shipment.updatedAt;
 
   // Check if shipment can be modified
-  const canModify = shipment.status !== 'delivered' && 
-                     shipment.status !== 'completed' && 
-                     shipment.status !== 'cancelled';
+  const canModify = currentStatus !== 'delivered' && 
+                     currentStatus !== 'completed' && 
+                     currentStatus !== 'cancelled';
 
-  const handleOnHold = async () => {
-    if (!canModify) {
-      toast.warning(`Cannot put ${shipment.status} shipment on hold`);
-      return;
-    }
+ 
+
+ // ShipmentCard কম্পোনেন্ট - handleCancel এবং handleOnHold ফাংশন আপডেট করুন
+
+// Handle Cancel - সম্পূর্ণরূপে কনটেইনার থেকে রিমুভ করে
+const handleCancel = async () => {
+  if (!canModify) {
+    toast.warning(`Cannot cancel ${currentStatus} shipment`);
+    return;
+  }
+  
+  if (!cancelReason.trim()) {
+    toast.warning('Please provide a cancellation reason');
+    return;
+  }
+  
+  setUpdating(true);
+  try {
+    // ✅ Cancel করার সময় সরাসরি removeShipmentFromConsolidation কল করুন
+    const result = await removeShipmentFromConsolidation(consolidationId, shipment._id);
     
-    if (!confirm(`Put shipment ${shipment.trackingNumber} on hold?`)) return;
-    
-    setUpdating(true);
-    try {
-      const result = await updateShipmentInConsolidation(consolidationId, shipment._id, {
-        status: 'on_hold',
-        holdReason: 'Manual hold by admin',
-        notes: 'Shipment placed on hold'
-      });
+    if (result.success) {
+      setCurrentStatus('cancelled');
+      setCurrentProgress(0);
+      setCurrentLocation('Cancelled');
+      toast.warning(`❌ Shipment ${shipment.trackingNumber} cancelled and removed from container`);
       
-      if (result.success) {
-        toast.info(`📦 Shipment ${shipment.trackingNumber} is on hold`);
-        if (onShipmentUpdated) onShipmentUpdated();
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
-      console.error('Hold error:', error);
-      toast.error('Failed to put shipment on hold');
-    } finally {
-      setUpdating(false);
+      if (onShipmentUpdated) onShipmentUpdated();
+      setShowCancelReason(false);
+      setCancelReason('');
+    } else {
+      toast.error(result.message || 'Failed to cancel shipment');
     }
-  };
+  } catch (error) {
+    console.error('Cancel error:', error);
+    toast.error(error.message || 'Failed to cancel shipment');
+  } finally {
+    setUpdating(false);
+  }
+};
 
-  const handleCancel = async () => {
-    if (!canModify) {
-      toast.warning(`Cannot cancel ${shipment.status} shipment`);
-      return;
-    }
+// Handle Hold - শুধুমাত্র status change, কনটেইনার থেকে রিমুভ না
+const handleOnHold = async () => {
+  if (!canModify) {
+    toast.warning(`Cannot put ${currentStatus} shipment on hold`);
+    return;
+  }
+  
+  if (!confirm(`Put shipment ${shipment.trackingNumber} on hold?`)) return;
+  
+  setUpdating(true);
+  try {
+    const previousStatus = currentStatus;
     
-    if (!cancelReason.trim()) {
-      toast.warning('Please provide a cancellation reason');
-      return;
-    }
+    // ✅ Hold করার সময় updateShipmentInConsolidation ব্যবহার করুন (remove না)
+    const result = await updateShipmentInConsolidation(consolidationId, shipment._id, {
+      status: 'on_hold',
+      holdReason: 'Manual hold by admin',
+      notes: 'Shipment placed on hold',
+      previousStatus: previousStatus
+    });
     
-    setUpdating(true);
-    try {
-      const result = await updateShipmentInConsolidation(consolidationId, shipment._id, {
-        status: 'cancelled',
-        cancellationReason: cancelReason,
-        notes: `Shipment cancelled: ${cancelReason}`
-      });
+    if (result.success) {
+      // ✅ শুধুমাত্র status পরিবর্তন করুন, location পরিবর্তন করবেন না
+      setCurrentStatus('on_hold');
+      setCurrentProgress(0);
+      // ✅ Location পরিবর্তন করবেন না - পুরনো location ই থাকবে
+      toast.info(`📦 Shipment ${shipment.trackingNumber} is on hold (still in container)`);
       
-      if (result.success) {
-        toast.warning(`❌ Shipment ${shipment.trackingNumber} cancelled and removed`);
-        if (onShipmentUpdated) onShipmentUpdated();
-        setShowCancelReason(false);
-        setCancelReason('');
-      } else {
-        toast.error(result.message);
+      if (trackingData) {
+        setTrackingData({
+          ...trackingData,
+          status: 'on_hold',
+          currentStatus: {
+            ...trackingData.currentStatus,
+            status: 'on_hold',
+            label: 'On Hold',
+            progress: 0,
+            location: trackingData.currentStatus?.location || currentLocation  // Location রাখুন
+          }
+        });
       }
-    } catch (error) {
-      console.error('Cancel error:', error);
-      toast.error('Failed to cancel shipment');
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const handleResume = async () => {
-    if (shipment.status !== 'on_hold') {
-      toast.warning('Only on hold shipments can be resumed');
-      return;
-    }
-    
-    setUpdating(true);
-    try {
-      const result = await updateShipmentInConsolidation(consolidationId, shipment._id, {
-        status: 'in_progress',
-        notes: 'Resumed from hold'
-      });
       
-      if (result.success) {
-        toast.success(`✅ Shipment ${shipment.trackingNumber} resumed`);
-        if (onShipmentUpdated) onShipmentUpdated();
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
-      console.error('Resume error:', error);
-      toast.error('Failed to resume shipment');
-    } finally {
-      setUpdating(false);
+      if (onShipmentUpdated) onShipmentUpdated();
+    } else {
+      toast.error(result.message);
     }
-  };
+  } catch (error) {
+    console.error('Hold error:', error);
+    toast.error('Failed to put shipment on hold');
+  } finally {
+    setUpdating(false);
+  }
+};
 
-  const showActions = shipment.status !== 'cancelled' && 
-                       shipment.status !== 'delivered' && 
-                       shipment.status !== 'completed';
+// Handle Resume - শুধুমাত্র status restore, location ঠিক রাখে
+const handleResume = async () => {
+  if (currentStatus !== 'on_hold') {
+    toast.warning('Only on hold shipments can be resumed');
+    return;
+  }
+  
+  setUpdating(true);
+  try {
+    const previousStatus = shipment.previousStatus || 'in_progress';
+    
+    const result = await updateShipmentInConsolidation(consolidationId, shipment._id, {
+      status: previousStatus,
+      notes: 'Resumed from hold'
+    });
+    
+    if (result.success) {
+      // ✅ Location পরিবর্তন করবেন না
+      setCurrentStatus(previousStatus);
+      setCurrentProgress(getProgressFromStatus(previousStatus));
+      // ✅ location রাখুন
+      toast.success(`✅ Shipment ${shipment.trackingNumber} resumed`);
+      
+      if (trackingData) {
+        setTrackingData({
+          ...trackingData,
+          status: previousStatus,
+          currentStatus: {
+            ...trackingData.currentStatus,
+            status: previousStatus,
+            label: getStatusLabel(previousStatus),
+            progress: getProgressFromStatus(previousStatus),
+            location: trackingData.currentStatus?.location || currentLocation  // Location রাখুন
+          }
+        });
+      }
+      
+      if (onShipmentUpdated) onShipmentUpdated();
+    } else {
+      toast.error(result.message);
+    }
+  } catch (error) {
+    console.error('Resume error:', error);
+    toast.error('Failed to resume shipment');
+  } finally {
+    setUpdating(false);
+  }
+};
+  const showActions = currentStatus !== 'cancelled' && 
+                       currentStatus !== 'delivered' && 
+                       currentStatus !== 'completed';
 
-  // Get border and background colors based on status
   const getCardStyles = () => {
-    const status = shipment.status;
+    const status = currentStatus;
     if (status === 'on_hold') return 'border-orange-300 bg-orange-50';
     if (status === 'cancelled') return 'border-red-300 bg-red-50';
     if (status === 'delivered') return 'border-green-300 bg-green-50';
@@ -735,30 +765,30 @@ const getProgressFromStatus = (status) => {
 
   return (
     <div className={`rounded-lg border overflow-hidden hover:shadow-md transition-all ${getCardStyles()}`}>
-      {/* Header */}
+      {/* Header - same as before */}
       <div 
         className="p-2 cursor-pointer flex items-center justify-between"
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center space-x-2 flex-1 min-w-0">
           <div className={`p-1.5 rounded-lg flex-shrink-0 ${
-            shipment.status === 'on_hold' ? 'bg-orange-100' :
-            shipment.status === 'cancelled' ? 'bg-red-100' :
-            shipment.status === 'delivered' ? 'bg-green-100' :
-            shipment.status === 'completed' ? 'bg-emerald-100' :
-            shipment.status === 'in_transit' ? 'bg-blue-100' :
-            shipment.status === 'arrived_at_destination_port' ? 'bg-green-100' :
-            shipment.status === 'customs_cleared' ? 'bg-emerald-100' :
+            currentStatus === 'on_hold' ? 'bg-orange-100' :
+            currentStatus === 'cancelled' ? 'bg-red-100' :
+            currentStatus === 'delivered' ? 'bg-green-100' :
+            currentStatus === 'completed' ? 'bg-emerald-100' :
+            currentStatus === 'in_transit' ? 'bg-blue-100' :
+            currentStatus === 'arrived_at_destination_port' ? 'bg-green-100' :
+            currentStatus === 'customs_cleared' ? 'bg-emerald-100' :
             'bg-purple-100'
           }`}>
             <StatusIcon className={`h-3 w-3 ${
-              shipment.status === 'on_hold' ? 'text-orange-600' :
-              shipment.status === 'cancelled' ? 'text-red-600' :
-              shipment.status === 'delivered' ? 'text-green-600' :
-              shipment.status === 'completed' ? 'text-emerald-600' :
-              shipment.status === 'in_transit' ? 'text-blue-600' :
-              shipment.status === 'arrived_at_destination_port' ? 'text-green-600' :
-              shipment.status === 'customs_cleared' ? 'text-emerald-600' :
+              currentStatus === 'on_hold' ? 'text-orange-600' :
+              currentStatus === 'cancelled' ? 'text-red-600' :
+              currentStatus === 'delivered' ? 'text-green-600' :
+              currentStatus === 'completed' ? 'text-emerald-600' :
+              currentStatus === 'in_transit' ? 'text-blue-600' :
+              currentStatus === 'arrived_at_destination_port' ? 'text-green-600' :
+              currentStatus === 'customs_cleared' ? 'text-emerald-600' :
               'text-purple-600'
             }`} />
           </div>
@@ -768,7 +798,7 @@ const getProgressFromStatus = (status) => {
                 {shipment.trackingNumber || `SHP-${shipment._id?.slice(-6)}`}
               </span>
               
-              {/* Status Badge */}
+              {/* Status Badge - Using current status */}
               <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] rounded-full border ${display.color}`}>
                 <StatusIcon className="h-2.5 w-2.5 mr-0.5" />
                 {display.label}
@@ -784,10 +814,10 @@ const getProgressFromStatus = (status) => {
             </div>
             <div className="text-[10px] text-gray-500 mt-0.5 flex items-center space-x-2">
               <span>{shipment.weight || 0} kg • {shipment.volume || 0} m³</span>
-              {estimatedDelivery && (
+              {trackingData?.estimatedDelivery && (
                 <span className="text-green-600 flex items-center">
                   <Calendar className="h-2.5 w-2.5 mr-0.5" />
-                  Est: {new Date(estimatedDelivery).toLocaleDateString()}
+                  Est: {new Date(trackingData.estimatedDelivery).toLocaleDateString()}
                 </span>
               )}
             </div>
@@ -812,10 +842,10 @@ const getProgressFromStatus = (status) => {
         </div>
       </div>
 
-      {/* Expanded Details */}
+      {/* Expanded Details - same as before */}
       {expanded && (
         <div className="p-2 bg-gray-50 border-t">
-          {/* Tracking Timeline */}
+          {/* Tracking Timeline Section */}
           {trackingData?.trackingHistory && trackingData.trackingHistory.length > 0 && (
             <div className="mb-3">
               <h4 className="text-[10px] font-semibold text-gray-700 mb-2 flex items-center">
@@ -876,10 +906,10 @@ const getProgressFromStatus = (status) => {
                 <span className="text-[9px] font-medium">{display.progress}%</span>
               </div>
             </div>
-            <div className="bg-white p-1.5 rounded">
+            {/* <div className="bg-white p-1.5 rounded">
               <span className="text-gray-500">Last Updated:</span>
-              <p className="font-medium text-[10px]">{lastUpdate ? new Date(lastUpdate).toLocaleString() : 'N/A'}</p>
-            </div>
+              <p className="font-medium text-[10px]">{trackingData?.updatedAt ? new Date(trackingData.updatedAt).toLocaleString() : 'N/A'}</p>
+            </div> */}
             <div className="bg-white p-1.5 rounded col-span-2">
               <span className="text-gray-500">Current Location:</span>
               <p className="font-medium text-blue-600 text-[10px]">{currentLocation}</p>
@@ -910,7 +940,7 @@ const getProgressFromStatus = (status) => {
           {/* Action Buttons */}
           {showActions && (
             <div className="flex space-x-2 pt-2 border-t">
-              {shipment.status === 'on_hold' ? (
+              {currentStatus === 'on_hold' ? (
                 <button
                   onClick={handleResume}
                   disabled={updating}
@@ -929,14 +959,14 @@ const getProgressFromStatus = (status) => {
                     {updating ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Pause className="h-3 w-3 mr-1" />}
                     Hold
                   </button>
-                  <button
+                  {/* <button
                     onClick={() => setShowCancelReason(true)}
                     disabled={updating}
                     className="flex-1 px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700 disabled:bg-gray-300 flex items-center justify-center transition-colors"
                   >
                     <Ban className="h-3 w-3 mr-1" />
                     Cancel
-                  </button>
+                  </button> */}
                 </>
               )}
             </div>
@@ -3979,7 +4009,11 @@ export default function ConsolidationsPage() {
         break;
     }
   };
-
+const handleShipmentStatusChange = async () => {
+  // ✅ Reload the specific consolidation or refresh all
+  await loadConsolidations();
+  await loadStats();
+};
   const readyForDispatchCount = allConsolidations.filter(c => c.status === 'consolidated').length;
   
   return (
@@ -4022,17 +4056,7 @@ export default function ConsolidationsPage() {
               </Link> 
             </div>
           </div> 
-        </div>
-
-        {/* Stats */}
-        {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-            <StatCard title="Total" value={stats.total || 0} icon={Package} color="orange" />
-            <StatCard title="In Progress" value={stats.inProgress || 0} icon={Play} color="blue" />
-            <StatCard title="Ready" value={readyForDispatchCount} icon={Send} color="green" />
-            <StatCard title="In Transit" value={stats.inTransit || 0} icon={Truck} color="purple" />
-          </div>
-        )}
+        </div> 
 
         {/* Filters */}
         <FilterBar 
@@ -4109,6 +4133,7 @@ export default function ConsolidationsPage() {
                     onOutForDelivery={handleOutForDelivery}
                     onDelivered={handleDelivered}
                     onComplete={handleComplete}
+                    onShipmentStatusChange={handleShipmentStatusChange}
                     searchTerm={filters.search}
                   />
                 ))}

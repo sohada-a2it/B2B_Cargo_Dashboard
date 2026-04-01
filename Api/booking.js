@@ -230,8 +230,6 @@ export const getMyBookings = async (params = {}) => {
 };
 
 // 9. GET MY BOOKING BY ID (Customer)
-// Controller: exports.getMyBookingById
-// Endpoint: GET /bookings/my-bookings/:id
 export const getMyBookingById = async (bookingId) => {
   try {
     const response = await axiosInstance.get(`/bookings/my-bookings/${bookingId}`);
