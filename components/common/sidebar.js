@@ -684,7 +684,7 @@ export default function Sidebar({ user: propUser = null }) {
           )}
 
           {/* Search */}
-          {!collapsed && (
+          {/* {!collapsed && (
             <div className="px-3 mb-4">
               <div className="relative">
                 <HiOutlineSearch className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -697,17 +697,17 @@ export default function Sidebar({ user: propUser = null }) {
                 />
               </div>
             </div>
-          )}
+          )} */}
 
           {/* Notification icon for collapsed */}
-          {collapsed && (
+          {/* {collapsed && (
             <div className="px-2 mb-4 flex justify-center">
               <button className="relative p-2 hover:bg-orange-50 rounded-lg transition-colors">
                 <HiOutlineBell className="w-5 h-5 text-gray-500" />
                 <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
               </button>
             </div>
-          )}
+          )} */}
 
           {/* Menu items */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">

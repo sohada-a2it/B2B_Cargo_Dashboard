@@ -82,7 +82,7 @@ const CONSOLIDATION_STATUSES = [
   { value: 'draft', label: 'Draft', color: 'gray', icon: FileText },
   { value: 'in_progress', label: 'In Progress', color: 'blue', icon: Play },
   { value: 'consolidated', label: 'Consolidated', color: 'purple', icon: Package },
-  { value: 'ready_for_dispatch', label: 'Ready for Dispatch', color: 'orange', icon: Send },
+  { value: 'ready_for_dispatch', label: 'Preparing Documents', color: 'orange', icon: Send },
   { value: 'loaded', label: 'Loaded', color: 'indigo', icon: Package },
   { value: 'dispatched', label: 'Dispatched', color: 'amber', icon: Send },
   { value: 'in_transit', label: 'In Transit', color: 'yellow', icon: Truck },
@@ -400,7 +400,7 @@ const ShipmentCard = ({ shipment, consolidationId, consolidationStatus, onShipme
       'returned': 'Returned',
       'received_at_warehouse': 'At Warehouse',
       'consolidated': 'Consolidated',
-      'ready_for_dispatch': 'Ready for Dispatch',
+      'ready_for_dispatch': 'Preparing Documents',
       'loaded_in_container': 'Loaded',
       'dispatched': 'Dispatched'
     };
@@ -1209,33 +1209,13 @@ const ConsolidationCard = ({
       case 'draft':
         return (
           <button
-            onClick={() => onStartConsolidation(consolidation)}
+            onClick={() => onReadyForDispatch(consolidation)}
             className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 flex items-center"
           >
             <Play className="h-3 w-3 mr-1" />
-            Start
+            Ready
           </button>
-        );
-      case 'in_progress':
-        return (
-          <button
-            onClick={() => onCompleteConsolidation(consolidation)}
-            className="px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700 flex items-center"
-          >
-            <Package className="h-3 w-3 mr-1" />
-            In Progress
-          </button>
-        );
-      case 'consolidated':
-        return (
-          <button
-            onClick={() => onReadyForDispatch(consolidation)}
-            className="px-2 py-1 bg-orange-600 text-white rounded text-xs hover:bg-orange-700 flex items-center"
-          >
-            <Send className="h-3 w-3 mr-1" />
-            Ready 
-          </button>
-        );
+        );  
       case 'ready_for_dispatch':
         return (
           <button
@@ -1364,12 +1344,31 @@ const ConsolidationCard = ({
         </div>
 
         {/* Container */}
-        <div className="bg-purple-50 p-2 rounded mb-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-purple-700 font-medium">{containerType}</span>
-            <span className="font-mono text-purple-600">{consolidation.containerNumber || 'No container'}</span>
-          </div>
-        </div>
+       {/* Container & Seal Info */}
+<div className="bg-purple-50 p-2 rounded mb-2">
+  <div className="flex items-center justify-between text-xs">
+    <span className="text-purple-700 font-medium">{containerType}</span>
+    <span className="font-mono text-purple-600">{consolidation.containerNumber || 'No container'}</span>
+  </div>
+  
+  {/* ✅ Seal Number - একাধিক প্রপার্টি চেক করে */}
+  {(consolidation.sealNumber || consolidation.seal || consolidation.sealNo) && (
+    <div className="flex items-center justify-between text-xs mt-1 pt-1 border-t border-purple-200">
+      <span className="text-purple-700 font-medium">Seal No:</span>
+      <span className="font-mono text-purple-600">
+        {consolidation.sealNumber || consolidation.seal || consolidation.sealNo}
+      </span>
+    </div>
+  )}
+  
+  {/* Seal Number না থাকলে মেসেজ দেখান (optional) */}
+  {!consolidation.sealNumber && !consolidation.seal && !consolidation.sealNo && (
+    <div className="flex items-center justify-between text-xs mt-1 pt-1 border-t border-purple-200">
+      <span className="text-purple-700 font-medium">Seal No:</span>
+      <span className="text-purple-400 italic">Not assigned</span>
+    </div>
+  )}
+</div>
 
         {/* Volume/Weight Progress */}
         <div className="space-y-1 mb-2">
@@ -2888,53 +2887,42 @@ const DispatchModal = ({ isOpen, onClose, consolidation, onSuccess }) => {
   );
 };
 
-// ==================== READY FOR DISPATCH MODAL ====================
+// ==================== Preparing Documents MODAL ====================
 
 const ReadyForDispatchModal = ({ isOpen, onClose, consolidation, onSuccess }) => {
   const [loading, setLoading] = useState(false);
-  const [validationResults, setValidationResults] = useState(null);
   const [notes, setNotes] = useState('');
 
-  useEffect(() => {
-    if (consolidation && isOpen) {
-      const missing = [];
-      const warnings = [];
-
-      if (consolidation.status !== 'consolidated') missing.push('Status must be "Consolidated"');
-      if (!consolidation.containerNumber) missing.push('Container number is required');
-      if (!consolidation.containerType) missing.push('Container type is required');
-      if (!consolidation.originWarehouse) missing.push('Origin warehouse is required');
-      if (!consolidation.destinationPort) missing.push('Destination port is required');
-      if ((consolidation.shipments?.length || 0) === 0) missing.push('At least one shipment is required');
-      if (!consolidation.totalWeight || consolidation.totalWeight === 0) warnings.push('Weight is 0 kg');
-      if (!consolidation.totalVolume || consolidation.totalVolume === 0) warnings.push('Volume is 0 CBM');
-
-      setValidationResults({
-        ready: missing.length === 0,
-        missing,
-        warnings
-      });
-    }
-  }, [consolidation, isOpen]);
- 
   const handleMarkAsReady = async () => {
+    if (!consolidation?._id) {
+      toast.error('Invalid consolidation');
+      return;
+    }
+    
     setLoading(true);
     try {
-      const result = await markAsReadyForDispatch(consolidation._id, consolidation);
+      // ✅ সঠিকভাবে API কল করুন
+      const result = await updateConsolidationStatus(consolidation._id, {
+        status: 'ready_for_dispatch',
+        notes: notes || `Marked Preparing Documents`
+      });
       
-      if (result.success) {
-        toast.success('✓ Ready for Dispatch');
-        onSuccess();
+      if (result?.success) {
+        toast.success('✅ Preparing Documents');
+        onSuccess?.();
         onClose();
+      } else {
+        toast.error(result?.message || 'Failed to mark as ready');
       }
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to mark as ready');
+      console.error('Preparing Documents error:', error);
+      toast.error(error?.response?.data?.message || 'Failed to mark as ready');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !consolidation) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -2942,7 +2930,7 @@ const ReadyForDispatchModal = ({ isOpen, onClose, consolidation, onSuccess }) =>
         <div className="p-4 border-b">
           <h3 className="text-base font-bold flex items-center">
             <Send className="h-4 w-4 mr-2 text-orange-600" />
-            Ready for Dispatch
+            Preparing Documents
           </h3>
           <p className="text-xs text-gray-500 mt-1">
             {consolidation?.consolidationNumber}
@@ -2950,32 +2938,6 @@ const ReadyForDispatchModal = ({ isOpen, onClose, consolidation, onSuccess }) =>
         </div>
         
         <div className="p-4 space-y-3">
-          {/* Validation */}
-          {validationResults && (
-            <>
-              {validationResults.missing.length > 0 && (
-                <div className="bg-red-50 p-2 rounded">
-                  <p className="text-xs font-medium text-red-800 mb-1">Required:</p>
-                  <ul className="list-disc list-inside">
-                    {validationResults.missing.map((item, i) => (
-                      <li key={i} className="text-[10px] text-red-700">{item}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {validationResults.warnings.length > 0 && (
-                <div className="bg-yellow-50 p-2 rounded">
-                  <p className="text-xs font-medium text-yellow-800 mb-1">Warnings:</p>
-                  <ul className="list-disc list-inside">
-                    {validationResults.warnings.map((item, i) => (
-                      <li key={i} className="text-[10px] text-yellow-700">{item}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </>
-          )}
-
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
               Notes (Optional)
@@ -2984,8 +2946,18 @@ const ReadyForDispatchModal = ({ isOpen, onClose, consolidation, onSuccess }) =>
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
+              placeholder="Any notes about this dispatch..."
               className="w-full p-2 text-sm border rounded-lg focus:ring-2 focus:ring-orange-600"
             />
+          </div>
+
+          <div className="bg-blue-50 p-2 rounded">
+            <div className="flex items-start">
+              <Info className="h-3 w-3 text-blue-600 mr-1 mt-0.5" />
+              <p className="text-[10px] text-blue-700">
+                Status must be "Consolidated" to mark as Preparing Documents.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -2995,12 +2967,8 @@ const ReadyForDispatchModal = ({ isOpen, onClose, consolidation, onSuccess }) =>
           </button>
           <button
             onClick={handleMarkAsReady}
-            disabled={loading || (validationResults && !validationResults.ready)}
-            className={`px-3 py-1.5 text-sm rounded-lg flex items-center ${
-              validationResults && !validationResults.ready
-                ? 'bg-gray-300 cursor-not-allowed'
-                : 'bg-orange-600 hover:bg-orange-700 text-white'
-            }`}
+            disabled={loading}
+            className="px-3 py-1.5 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-gray-300 flex items-center"
           >
             {loading ? (
               <>
