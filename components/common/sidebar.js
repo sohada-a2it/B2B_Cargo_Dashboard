@@ -123,6 +123,12 @@ const menuItems = [
         icon: <HiOutlinePlus className="w-4 h-4" />,
         roles: ['admin']
       }, 
+      {
+        title: 'Create Manually',
+        path: '/Bookings/create_manually',
+        icon: <HiOutlinePlus className="w-4 h-4" />,
+        roles: ['admin']
+      }, 
     ],
   },
   {

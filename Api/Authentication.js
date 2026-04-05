@@ -2,7 +2,21 @@ import axiosInstance from '@/lib/axiosInstance';
 import Cookies from 'js-cookie';
 
 // ==================== AUTHENTICATION ====================
+export const registerWithoutOTP = async (userData) => {
+  try {
+    const response = await axiosInstance.post('/register', userData);
 
+    // ✅ Auto login after register (token থাকলে)
+    if (response.data.success && response.data.token) {
+      Cookies.set('token', response.data.token, { expires: 7 });
+      Cookies.set('user', JSON.stringify(response.data.data), { expires: 7 });
+    }
+
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { message: 'Registration failed' };
+  }
+};
 // Login (All Roles)
 export const login = async (email, password) => {
   try {

@@ -87,6 +87,7 @@ const CONSOLIDATION_STATUSES = [
   { value: 'dispatched', label: 'Dispatched', color: 'amber', icon: Send },
   { value: 'in_transit', label: 'In Transit', color: 'yellow', icon: Truck },
   { value: 'arrived', label: 'Arrived', color: 'green', icon: CheckCircle },
+  { value: 'under_customs_cleared', label: 'Under Customs Cleared', color: 'emerald', icon: Shield },
   { value: 'customs_cleared', label: 'Customs Cleared', color: 'emerald', icon: Shield },
   { value: 'out_for_delivery', label: 'Out for Delivery', color: 'blue', icon: Truck },
   { value: 'delivered', label: 'Delivered', color: 'emerald', icon: CheckCircle },
@@ -391,6 +392,7 @@ const ShipmentCard = ({ shipment, consolidationId, consolidationStatus, onShipme
       'in_transit_sea_freight': 'In Transit (Sea)',
       'arrived_at_destination_port': 'Arrived at Port',
       'arrived': 'Arrived',
+      'under_customs_cleared': 'Under Customs Cleared',
       'customs_cleared': 'Customs Cleared',
       'out_for_delivery': 'Out for Delivery',
       'delivered': 'Delivered',
@@ -439,6 +441,7 @@ const ShipmentCard = ({ shipment, consolidationId, consolidationStatus, onShipme
       'in_transit_sea_freight': 50,
       'arrived_at_destination_port': 70,
       'arrived': 70,
+      'under_customs_cleared': 75,
       'customs_cleared': 80,
       'out_for_delivery': 90,
       'delivered': 100,
@@ -558,6 +561,7 @@ const ShipmentCard = ({ shipment, consolidationId, consolidationStatus, onShipme
       'in_transit_sea_freight': 'bg-blue-100 text-blue-700 border-blue-200',
       'arrived_at_destination_port': 'bg-green-100 text-green-700 border-green-200',
       'arrived': 'bg-green-100 text-green-700 border-green-200',
+      'under_customs_cleared': 'bg-yellow-100 text-yellow-700 border-yellow-200',
       'customs_cleared': 'bg-emerald-100 text-emerald-700 border-emerald-200',
       'out_for_delivery': 'bg-sky-100 text-sky-700 border-sky-200',
       'dispatched': 'bg-orange-100 text-orange-700 border-orange-200',
@@ -575,6 +579,7 @@ const ShipmentCard = ({ shipment, consolidationId, consolidationStatus, onShipme
       'in_transit_sea_freight': Ship,
       'arrived_at_destination_port': Flag,
       'arrived': Flag,
+      'under_customs_cleared': Shield,
       'customs_cleared': Shield,
       'out_for_delivery': Truck,
       'dispatched': Send,
@@ -1158,6 +1163,7 @@ const ConsolidationCard = ({
   onLoadedClick,
   onDispatch,
   onArrivedClick,
+  onUnderCustomsCleared,
   onCustomsCleared,
   onOutForDelivery,
   onDelivered,
@@ -1249,11 +1255,21 @@ const ConsolidationCard = ({
       case 'arrived':
         return (
           <button
-            onClick={() => onCustomsCleared(consolidation)}
+            onClick={() => onUnderCustomsCleared(consolidation)}
             className="px-2 py-1 bg-emerald-600 text-white rounded text-xs hover:bg-emerald-700 flex items-center"
           >
             <Shield className="h-3 w-3 mr-1" />
-            Customs
+            Under Customs Cleared
+          </button>
+        );
+        case 'under_customs_cleared':
+        return (
+          <button
+            onClick={() => onCustomsCleared(consolidation)}
+            className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 flex items-center"
+          >
+            <Truck className="h-3 w-3 mr-1" />
+            Customs Cleared
           </button>
         );
       case 'customs_cleared':
@@ -1263,7 +1279,7 @@ const ConsolidationCard = ({
             className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 flex items-center"
           >
             <Truck className="h-3 w-3 mr-1" />
-            Out
+            Out for Delivery
           </button>
         );
       case 'out_for_delivery':
@@ -1276,16 +1292,16 @@ const ConsolidationCard = ({
             Deliver
           </button>
         );
-      case 'delivered':
-        return (
-          <button
-            onClick={() => onComplete(consolidation)}
-            className="px-2 py-1 bg-emerald-600 text-white rounded text-xs hover:bg-emerald-700 flex items-center"
-          >
-            <Award className="h-3 w-3 mr-1" />
-            Complete
-          </button>
-        );
+      // case 'delivered':
+      //   return (
+      //     <button
+      //       onClick={() => onComplete(consolidation)}
+      //       className="px-2 py-1 bg-emerald-600 text-white rounded text-xs hover:bg-emerald-700 flex items-center"
+      //     >
+      //       <Award className="h-3 w-3 mr-1" />
+      //       Complete
+      //     </button>
+      //   );
       default:
         return null;
     }
@@ -1479,6 +1495,7 @@ const ConsolidationDetailsModal = ({
   onLoadedClick,
   onDispatch,
   onArrivedClick,
+  onUnderCustomsCleared,
   onCustomsCleared,
   onOutForDelivery,
   onDelivered,
@@ -1877,6 +1894,7 @@ const TableRow = ({
   onLoadedClick,
   onDispatch,
   onArrivedClick,
+  onUnderCustomsCleared,
   onCustomsCleared,
   onOutForDelivery,
   onDelivered,
@@ -2023,6 +2041,7 @@ const ListItem = ({
   onLoadedClick,
   onDispatch,
   onArrivedClick,
+  onUnderCustomsCleared,
   onCustomsCleared,
   onOutForDelivery,
   onDelivered,
@@ -2951,14 +2970,14 @@ const ReadyForDispatchModal = ({ isOpen, onClose, consolidation, onSuccess }) =>
             />
           </div>
 
-          <div className="bg-blue-50 p-2 rounded">
+          {/* <div className="bg-blue-50 p-2 rounded">
             <div className="flex items-start">
               <Info className="h-3 w-3 text-blue-600 mr-1 mt-0.5" />
               <p className="text-[10px] text-blue-700">
                 Status must be "Consolidated" to mark as Preparing Documents.
               </p>
             </div>
-          </div>
+          </div> */}
         </div>
 
         <div className="p-4 border-t flex justify-end space-x-2">
@@ -3134,6 +3153,134 @@ const ArrivedModal = ({ isOpen, onClose, consolidation, onSuccess }) => {
   );
 };
 
+// ==================== CUSTOMS CLEARED MODAL ====================
+
+const UnderCustomsClearedModal = ({ isOpen, onClose, consolidation, onSuccess }) => {
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    clearanceDate: new Date().toISOString().split('T')[0],
+    clearanceTime: new Date().toTimeString().slice(0, 5),
+    customsReference: '',
+    notes: ''
+  });
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    try {
+      const result = await updateConsolidationStatus(consolidation._id, {
+        status: 'under_customs_cleared',
+        notes: `Under Customs cleared on ${formData.clearanceDate} ${formData.clearanceTime}. Reference: ${formData.customsReference}. ${formData.notes}`
+      });
+
+      if (result.success) {
+        toast.success('✅ Under Customs clearance completed');
+        onSuccess();
+        onClose();
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      toast.error('Failed to update status');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl max-w-md w-full">
+        <div className="p-4 border-b">
+          <h3 className="text-base font-bold flex items-center">
+            <Shield className="h-4 w-4 mr-2 text-emerald-600" />
+            Under Customs Clearance
+          </h3>
+          <p className="text-xs text-gray-500 mt-1">
+            {consolidation?.consolidationNumber}
+          </p>
+        </div>
+        
+        <div className="p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Clearance Date
+              </label>
+              <input
+                type="date"
+                value={formData.clearanceDate}
+                onChange={(e) => setFormData({...formData, clearanceDate: e.target.value})}
+                className="w-full p-2 text-sm border rounded-lg focus:ring-2 focus:ring-emerald-600"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Clearance Time
+              </label>
+              <input
+                type="time"
+                value={formData.clearanceTime}
+                onChange={(e) => setFormData({...formData, clearanceTime: e.target.value})}
+                className="w-full p-2 text-sm border rounded-lg focus:ring-2 focus:ring-emerald-600"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Customs Reference
+            </label>
+            <input
+              type="text"
+              value={formData.customsReference}
+              onChange={(e) => setFormData({...formData, customsReference: e.target.value})}
+              placeholder="e.g., CUS-2025-001"
+              className="w-full p-2 text-sm border rounded-lg focus:ring-2 focus:ring-emerald-600"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Notes (Optional)
+            </label>
+            <textarea
+              value={formData.notes}
+              onChange={(e) => setFormData({...formData, notes: e.target.value})}
+              rows={2}
+              placeholder="Any customs notes..."
+              className="w-full p-2 text-sm border rounded-lg focus:ring-2 focus:ring-emerald-600"
+            />
+          </div>
+        </div>
+
+        <div className="p-4 border-t flex justify-end space-x-2">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:bg-gray-300 flex items-center"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              'Confirm'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 // ==================== CUSTOMS CLEARED MODAL ====================
 
 const CustomsClearedModal = ({ isOpen, onClose, consolidation, onSuccess }) => {
@@ -3727,6 +3874,7 @@ export default function ConsolidationsPage() {
   const [showDispatchModal, setShowDispatchModal] = useState(false);
   const [showLoadedModal, setShowLoadedModal] = useState(false);
   const [showArrivedModal, setShowArrivedModal] = useState(false);
+  const [showUnderCustomsClearedModal, setShowUnderCustomsClearedModal] = useState(false);
   const [showCustomsClearedModal, setShowCustomsClearedModal] = useState(false);
   const [showOutForDeliveryModal, setShowOutForDeliveryModal] = useState(false);
   const [showDeliveredModal, setShowDeliveredModal] = useState(false);
@@ -3926,6 +4074,10 @@ export default function ConsolidationsPage() {
     setShowArrivedModal(true);
   };
 
+  const handleUnderCustomsCleared = (consolidation) => {
+    setSelectedConsolidation(consolidation);
+    setShowUnderCustomsClearedModal(true);
+  };
   const handleCustomsCleared = (consolidation) => {
     setSelectedConsolidation(consolidation);
     setShowCustomsClearedModal(true);
@@ -4097,6 +4249,7 @@ const handleShipmentStatusChange = async () => {
                     onLoadedClick={handleLoadedClick}
                     onDispatch={handleDispatch}
                     onArrivedClick={handleArrivedClick}
+                    onUnderCustomsCleared={handleUnderCustomsCleared}
                     onCustomsCleared={handleCustomsCleared}
                     onOutForDelivery={handleOutForDelivery}
                     onDelivered={handleDelivered}
@@ -4123,6 +4276,7 @@ const handleShipmentStatusChange = async () => {
                     onLoadedClick={handleLoadedClick}
                     onDispatch={handleDispatch}
                     onArrivedClick={handleArrivedClick}
+                    onUnderCustomsCleared={handleUnderCustomsCleared}
                     onCustomsCleared={handleCustomsCleared}
                     onOutForDelivery={handleOutForDelivery}
                     onDelivered={handleDelivered}
@@ -4163,6 +4317,7 @@ const handleShipmentStatusChange = async () => {
                         onLoadedClick={handleLoadedClick}
                         onDispatch={handleDispatch}
                         onArrivedClick={handleArrivedClick}
+                        onUnderCustomsCleared={handleUnderCustomsCleared}
                         onCustomsCleared={handleCustomsCleared}
                         onOutForDelivery={handleOutForDelivery}
                         onDelivered={handleDelivered}
@@ -4216,6 +4371,7 @@ const handleShipmentStatusChange = async () => {
         onLoadedClick={handleLoadedClick}
         onDispatch={handleDispatch}
         onArrivedClick={handleArrivedClick}
+        onUnderCustomsCleared={handleUnderCustomsCleared}
         onCustomsCleared={handleCustomsCleared}
         onOutForDelivery={handleOutForDelivery}
         onDelivered={handleDelivered}
@@ -4271,6 +4427,12 @@ const handleShipmentStatusChange = async () => {
         onSuccess={() => { loadConsolidations(); loadStats(); }}
       />
 
+      <UnderCustomsClearedModal
+        isOpen={showUnderCustomsClearedModal}
+        onClose={() => { setShowUnderCustomsClearedModal(false); setSelectedConsolidation(null); }}
+        consolidation={selectedConsolidation}
+        onSuccess={() => { loadConsolidations(); loadStats(); }}
+      />
       <CustomsClearedModal
         isOpen={showCustomsClearedModal}
         onClose={() => { setShowCustomsClearedModal(false); setSelectedConsolidation(null); }}

@@ -2,7 +2,25 @@
 
 import axiosInstance from '@/lib/axiosInstance';
 import Cookies from 'js-cookie';
+/**
+ * Create a new shipment
+ * @param {Object} shipmentData - shipment info
+ * @returns {Object|null} created shipment or null on error
+ */
+export const createShipment = async (shipmentData) => {
+  try {
+    const response = await axiosInstance.post('/shipments', shipmentData);
 
+    if (response.data.success) {
+      return response.data.data; // created shipment object
+    }
+
+    throw new Error(response.data.message || 'Failed to create shipment');
+  } catch (error) {
+    console.error('❌ Create shipment error:', error);
+    return null;
+  }
+};
 // 1. GET ALL SHIPMENTS (with filters & pagination) 
 
 // ==================== SHIPMENT API FUNCTIONS ====================
@@ -225,29 +243,29 @@ export const getMyShipmentTimeline = async (shipmentId) => {
 // };
 
 // 6. CREATE SHIPMENT (from Booking)
-export const createShipment = async (shipmentData) => {
-  try {
-    const response = await axiosInstance.post('/shipments/create', shipmentData);
+// export const createShipment = async (shipmentData) => {
+//   try {
+//     const response = await axiosInstance.post('/shipments/create', shipmentData);
     
-    if (response.data.success) {
-      return {
-        success: true,
-        data: response.data.data,
-        message: response.data.message
-      };
-    }
+//     if (response.data.success) {
+//       return {
+//         success: true,
+//         data: response.data.data,
+//         message: response.data.message
+//       };
+//     }
     
-    throw new Error(response.data.message || 'Failed to create shipment');
+//     throw new Error(response.data.message || 'Failed to create shipment');
     
-  } catch (error) {
-    console.error('Create shipment error:', error);
-    return {
-      success: false,
-      message: error.response?.data?.error || error.message || 'Failed to create shipment',
-      error: error.response?.data
-    };
-  }
-};
+//   } catch (error) {
+//     console.error('Create shipment error:', error);
+//     return {
+//       success: false,
+//       message: error.response?.data?.error || error.message || 'Failed to create shipment',
+//       error: error.response?.data
+//     };
+//   }
+// };
 
 // 7. UPDATE SHIPMENT 
 // shipping.js - updateShipment ফাংশন আপডেট
