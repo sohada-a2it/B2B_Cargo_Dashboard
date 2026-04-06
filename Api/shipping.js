@@ -9,7 +9,7 @@ import Cookies from 'js-cookie';
  */
 export const createShipment = async (shipmentData) => {
   try {
-    const response = await axiosInstance.post('/shipments', shipmentData);
+    const response = await axiosInstance.post('/create-shipments', shipmentData);
 
     if (response.data.success) {
       return response.data.data; // created shipment object

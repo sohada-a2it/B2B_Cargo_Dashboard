@@ -6,14 +6,13 @@ export const registerWithoutOTP = async (userData) => {
   try {
     const response = await axiosInstance.post('/register', userData);
 
-    // ✅ Auto login after register (token থাকলে)
-    if (response.data.success && response.data.token) {
-      Cookies.set('token', response.data.token, { expires: 7 });
-      Cookies.set('user', JSON.stringify(response.data.data), { expires: 7 });
-    }
+    // ❌ cookies remove (no auto login)
+    // ✅ BUT response keep
 
-    return response.data;
+    return response.data; // 🔥 MUST return
+
   } catch (error) {
+    console.error('Register Error:', error.response?.data || error.message);
     throw error.response?.data || { message: 'Registration failed' };
   }
 };

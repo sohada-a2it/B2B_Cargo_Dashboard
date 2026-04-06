@@ -60,7 +60,7 @@ const Logo = ({ collapsed }) => (
           />
         </div>
       ) : (
-        <div className="relative h-8 w-24">
+        <div className="relative h-8 w-24 mb-5">
           <Image 
             src="/logo.png"
             alt="LogiSwift" 
@@ -141,6 +141,12 @@ const menuItems = [
       {
         title: 'All Shipping',
         path: '/shippings/all_shipping',
+        icon: <HiOutlineClipboardList className="w-4 h-4" />,
+        roles: ['admin']
+      },
+      {
+        title: 'Manual Shipping',
+        path: '/shippings/manual-shipping',
         icon: <HiOutlineClipboardList className="w-4 h-4" />,
         roles: ['admin']
       },

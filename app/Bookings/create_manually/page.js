@@ -853,164 +853,184 @@ const createCustomerFromSender = async (senderData) => {
   };
 
   // ==================== SUBMIT HANDLER ====================
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (currentStep !== 5) {
-      toast.info('Please complete all steps first');
-      return;
-    }
-    
-    if (!isReviewConfirmed) {
-      toast.warning('Please review and confirm details before submitting');
-      return;
-    }
-    
-    const loadingToast = toast.loading('Creating booking...');
-    setIsSubmitting(true);
-    setServerErrors([]);
+ // লাইন 807 এর কাছাকাছি - handleSubmit ফাংশন আপডেট করুন
 
-    try {
-      // Create customer from sender
-      let customerId = null;
-      
-      if (formData.sender.email) {
-        toast.info('Creating customer account...');
+const handleSubmit = async (e) => {
+  e.preventDefault();
+
+  if (currentStep !== 5) {
+    toast.info('Please complete all steps first');
+    return;
+  }
+
+  if (!isReviewConfirmed) {
+    toast.warning('Please review and confirm details before submitting');
+    return;
+  }
+
+  // 🔥 Validate tracking number
+  if (!formData.trackingNumber) {
+    toast.error('Please generate or enter a tracking number');
+    return;
+  }
+
+  const loadingToast = toast.loading('Creating shipment...');
+  setIsSubmitting(true);
+  setServerErrors([]);
+
+  try {
+    let customerId = null;
+
+    if (formData.sender.email) {
+      try {
         customerId = await createCustomerFromSender(formData.sender);
-        if (customerId) {
-          toast.success('Customer account ready');
-        } else {
-          toast.warning('Proceeding without customer link');
-        }
+      } catch (err) {
+        console.warn('Customer creation failed, continuing...');
       }
-      
-      // Prepare timeline entries
-      const timelineEntries = trackingTimeline.map(entry => ({
-        status: entry.status,
-        description: entry.description,
-        updatedBy: adminUser?._id,
-        timestamp: entry.timestamp,
-        metadata: entry.metadata || {}
-      }));
-      
-      // Prepare booking data
-      const bookingData = {
-        customer: customerId,
-        createdBy: adminUser?._id,
-        serviceType: formData.serviceType,
-        shipmentClassification: {
-          mainType: formData.shipmentClassification.mainType,
-          subType: formData.shipmentClassification.subType
-        },
-        shipmentDetails: {
-          origin: formData.shipmentDetails.origin,
-          destination: formData.shipmentDetails.destination,
-          shippingMode: formData.shipmentDetails.shippingMode,
-          packageDetails: formData.shipmentDetails.packageDetails.map(pkg => ({
-            description: pkg.description,
-            packagingType: pkg.packagingType,
-            quantity: Number(pkg.quantity),
-            weight: Number(pkg.weight),
-            dimensions: pkg.dimensions,
-            volume: Number(pkg.volume),
-            productCategory: pkg.productCategory || 'Others',
-            hsCode: pkg.hsCode || '',
-            value: {
-              amount: Number(pkg.value.amount) || 0,
-              currency: pkg.value.currency || formData.quotedPrice.currency
-            },
-            hazardous: pkg.hazardous || false,
-            temperatureControlled: pkg.temperatureControlled || { required: false }
-          })),
-          specialInstructions: formData.shipmentDetails.specialInstructions || '',
-          referenceNumber: formData.shipmentDetails.referenceNumber || ''
-        },
-        dates: {
-          estimatedDeparture: formData.dates.estimatedDeparture,
-          estimatedArrival: formData.dates.estimatedArrival
-        },
-        quotedPrice: {
-          amount: Number(formData.quotedPrice.amount),
-          currency: formData.quotedPrice.currency,
-          breakdown: formData.quotedPrice.breakdown,
-          notes: formData.quotedPrice.notes,
-          quotedBy: adminUser?._id,
-          quotedAt: new Date(),
-          validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-        },
-        pricingStatus: formData.pricingStatus,
-        payment: {
-          mode: formData.payment.mode,
-          currency: formData.payment.currency,
-          amount: Number(formData.quotedPrice.amount)
-        },
-        sender: {
-          name: formData.sender.name,
-          companyName: formData.sender.companyName || '',
-          email: formData.sender.email,
-          phone: formData.sender.phone,
-          address: {
-            addressLine1: formData.sender.address.addressLine1 || 'N/A',
-            addressLine2: formData.sender.address.addressLine2 || '',
-            city: formData.sender.address.city || 'N/A',
-            state: formData.sender.address.state || '',
-            country: formData.sender.address.country || 'N/A',
-            postalCode: formData.sender.address.postalCode || ''
-          },
-          pickupDate: formData.sender.pickupDate || null,
-          pickupInstructions: formData.sender.pickupInstructions || ''
-        },
-        receiver: {
-          name: formData.receiver.name,
-          companyName: formData.receiver.companyName || '',
-          email: formData.receiver.email,
-          phone: formData.receiver.phone,
-          address: {
-            addressLine1: formData.receiver.address.addressLine1,
-            addressLine2: formData.receiver.address.addressLine2 || '',
-            city: formData.receiver.address.city,
-            state: formData.receiver.address.state,
-            country: formData.receiver.address.country,
-            postalCode: formData.receiver.address.postalCode || ''
-          },
-          deliveryInstructions: formData.receiver.deliveryInstructions || '',
-          isResidential: formData.receiver.isResidential || false
-        },
-        courier: {
-          company: formData.courier.company,
-          serviceType: formData.serviceType
-        },
-        status: formData.status,
-        shipmentStatus: formData.shipmentStatus,
-        trackingNumber: formData.trackingNumber,
-        timeline: timelineEntries
-      };
-
-      console.log('Submitting booking:', bookingData);
-
-      const response = await createShipment(bookingData);
-      
-      toast.dismiss(loadingToast);
-      
-      if (response.success) {
-        toast.success('🎉 Booking created successfully!');
-        setShowSuccess(true);
-        setTimeout(() => {
-          router.push('/Bookings/all_bookings');
-        }, 2000);
-      } else {
-        throw new Error(response.message || 'Failed to create booking');
-      }
-      
-    } catch (error) {
-      toast.dismiss(loadingToast);
-      console.error('Error details:', error);
-      toast.error(error.message || 'Failed to create booking');
-      setServerErrors([{ msg: error.message }]);
-    } finally {
-      setIsSubmitting(false);
     }
-  };
+
+    const timelineEntries = trackingTimeline.map(entry => ({
+      status: entry.status,
+      description: entry.description,
+      updatedBy: adminUser?._id,
+      timestamp: entry.timestamp,
+      metadata: entry.metadata || {}
+    }));
+
+    const shipmentData = {
+      customerId: customerId || null,
+      createdBy: adminUser?._id,
+
+      serviceType: formData.serviceType,
+
+      shipmentClassification: {
+        mainType: formData.shipmentClassification.mainType,
+        subType: formData.shipmentClassification.subType
+      },
+
+      shipmentDetails: {
+        origin: formData.shipmentDetails.origin,
+        destination: formData.shipmentDetails.destination,
+        shippingMode: formData.shipmentDetails.shippingMode,
+
+        packageDetails: formData.shipmentDetails.packageDetails.map(pkg => ({
+          description: pkg.description,
+          packagingType: pkg.packagingType,
+          quantity: Number(pkg.quantity),
+          weight: Number(pkg.weight),
+          volume: Number(pkg.volume),
+          dimensions: pkg.dimensions,
+          productCategory: pkg.productCategory || 'Others',
+          hsCode: pkg.hsCode || '',
+          value: {
+            amount: Number(pkg.value?.amount) || 0,
+            currency: pkg.value?.currency || formData.quotedPrice.currency
+          },
+          hazardous: pkg.hazardous || false,
+          temperatureControlled: pkg.temperatureControlled || { required: false }
+        })),
+
+        specialInstructions: formData.shipmentDetails.specialInstructions || '',
+        referenceNumber: formData.shipmentDetails.referenceNumber || ''
+      },
+
+      dates: {
+        estimatedDeparture: formData.dates.estimatedDeparture,
+        estimatedArrival: formData.dates.estimatedArrival
+      },
+
+      quotedPrice: {
+        amount: Number(formData.quotedPrice.amount),
+        currency: formData.quotedPrice.currency,
+        breakdown: formData.quotedPrice.breakdown,
+        notes: formData.quotedPrice.notes,
+        quotedBy: adminUser?._id,
+        quotedAt: new Date(),
+        validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      },
+
+      pricingStatus: formData.pricingStatus,
+
+      payment: {
+        mode: formData.payment.mode,
+        currency: formData.payment.currency,
+        amount: Number(formData.quotedPrice.amount)
+      },
+
+      sender: {
+        name: formData.sender.name,
+        companyName: formData.sender.companyName || '',
+        email: formData.sender.email,
+        phone: formData.sender.phone,
+        address: {
+          addressLine1: formData.sender.address.addressLine1 || 'N/A',
+          addressLine2: formData.sender.address.addressLine2 || '',
+          city: formData.sender.address.city || 'N/A',
+          state: formData.sender.address.state || '',
+          country: formData.sender.address.country || 'N/A',
+          postalCode: formData.sender.address.postalCode || ''
+        },
+        pickupDate: formData.sender.pickupDate || null,
+        pickupInstructions: formData.sender.pickupInstructions || ''
+      },
+
+      receiver: {
+        name: formData.receiver.name,
+        companyName: formData.receiver.companyName || '',
+        email: formData.receiver.email,
+        phone: formData.receiver.phone,
+        address: {
+          addressLine1: formData.receiver.address.addressLine1,
+          addressLine2: formData.receiver.address.addressLine2 || '',
+          city: formData.receiver.address.city,
+          state: formData.receiver.address.state,
+          country: formData.receiver.address.country,
+          postalCode: formData.receiver.address.postalCode || ''
+        },
+        deliveryInstructions: formData.receiver.deliveryInstructions || '',
+        isResidential: formData.receiver.isResidential || false
+      },
+
+      courier: {
+        company: formData.courier.company,
+        serviceType: formData.serviceType
+      },
+
+      // ✅ IMPORTANT: trackingNumber যোগ করুন
+      trackingNumber: formData.trackingNumber,  // ← এই লাইনটি আনকমেন্ট করুন
+      
+      status: formData.status,
+      shipmentStatus: formData.shipmentStatus,
+
+      timeline: timelineEntries
+    };
+
+    console.log('Submitting shipment with tracking:', shipmentData.trackingNumber);
+
+    const response = await createShipment(shipmentData);
+
+    toast.dismiss(loadingToast);
+
+    if (response && response.success) {
+      toast.success(`🚀 Shipment created! Tracking: ${shipmentData.trackingNumber}`);
+      setShowSuccess(true);
+
+      setTimeout(() => {
+        router.push('/Shipping');
+      }, 2000);
+    } else {
+      throw new Error('Failed to create shipment');
+    }
+
+  } catch (error) {
+    toast.dismiss(loadingToast);
+    console.error('Error details:', error);
+    toast.error(error.message || 'Failed to create shipment');
+    setServerErrors([{ msg: error.message }]);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   // ==================== RENDER ====================
   return (
