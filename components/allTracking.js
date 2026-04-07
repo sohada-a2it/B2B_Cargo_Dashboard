@@ -2,13 +2,15 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { toast } from 'react-toastify';
 import {
-  getAllShipments,
-  updateShipment,
-  formatShipmentDate,
-  updateTrackingNumber
+  getAllNewShipments,
+  updateShipmentStatus
+} from '@/Api/newShipping';
+import {
+  getAllShipments as getAllOldShipments,
+  updateTrackingNumber as updateOldTrackingNumber,
+  formatShipmentDate
 } from '@/Api/shipping';
 
 // Icons
@@ -16,7 +18,7 @@ import {
   Package, Search, ChevronLeft, ChevronRight,
   Edit2, Save, X, RefreshCw, Loader2,
   ChevronsLeft, ChevronsRight, Hash, 
-  User, Calendar, ChevronRight as ChevronRightIcon,
+  ChevronRight as ChevronRightIcon,
   CheckCircle, XCircle, AlertCircle
 } from 'lucide-react';
 
@@ -27,16 +29,7 @@ const COLORS = {
 
 // ==================== COMPONENTS ====================
 
-// Input Component
-const Input = ({
-  type = 'text',
-  value,
-  onChange,
-  placeholder,
-  icon: Icon,
-  className = '',
-  autoFocus = false
-}) => {
+const Input = ({ type = 'text', value, onChange, placeholder, icon: Icon, className = '', autoFocus = false }) => {
   return (
     <div className="relative">
       {Icon && (
@@ -61,7 +54,6 @@ const Input = ({
   );
 };
 
-// Stat Card Component
 const StatCard = ({ title, value, icon: Icon, color, onClick, active }) => {
   return (
     <div 
@@ -83,7 +75,6 @@ const StatCard = ({ title, value, icon: Icon, color, onClick, active }) => {
   );
 };
 
-// Tracking Status Badge
 const TrackingBadge = ({ hasTracking }) => {
   if (hasTracking) {
     return (
@@ -103,7 +94,6 @@ const TrackingBadge = ({ hasTracking }) => {
 
 // ==================== MAIN COMPONENT ====================
 export default function AllTrackingPage() {
-  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [shipments, setShipments] = useState([]);
@@ -133,65 +123,89 @@ export default function AllTrackingPage() {
     withoutTracking: 0
   });
 
-  // Fetch all shipments from DATABASE ONLY
-  // allTracking.jsx - fetchShipments ফাংশন আপডেট করুন
-
-const fetchShipments = async (showLoading = true) => {
-  if (showLoading) setLoading(true);
-  try {
-    const response = await getAllShipments({
-      page: pagination.page,
-      limit: pagination.limit,
-      search: searchTerm,
-      _: Date.now()
-    });
-    
-    if (response.success) {
-      const shipmentsData = response.data || [];
-      
-      // 🔴 ডিবাগ: কোন শিপমেন্টের tracking number পরিবর্তন হয়েছে চেক করুন
-      const targetId = '69a7acc9ebb43e0a1e0407b0';
-      const targetShipment = shipmentsData.find(s => s._id === targetId);
-      
-      console.log('🔍 Target Shipment from DB:', {
-        id: targetId,
-        trackingNumber: targetShipment?.trackingNumber,
-        fullData: targetShipment
-      });
-      
-      // সব শিপমেন্টের tracking number লিস্ট দেখুন
-      console.log('📋 All tracking numbers:', shipmentsData.map(s => ({
-        id: s._id?.substring(0, 8),
-        tracking: s.trackingNumber
-      })));
-      
-      setShipments(shipmentsData);
-      applyFilter(shipmentsData, activeFilter);
-      
-      setPagination(response.pagination || {
-        total: shipmentsData.length,
+  // Fetch all shipments from BOTH APIs (New + Old)
+  const fetchShipments = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    try {
+      // Fetch NEW shipments
+      const newResponse = await getAllNewShipments({
         page: 1,
-        limit: 50,
-        pages: Math.ceil(shipmentsData.length / 50)
+        limit: 10000,
+        _: Date.now()
       });
       
-      const withTracking = shipmentsData.filter(s => s.trackingNumber && s.trackingNumber.trim() !== '').length;
-      setStats({
-        total: shipmentsData.length,
-        withTracking,
-        withoutTracking: shipmentsData.length - withTracking
+      // Fetch OLD shipments
+      const oldResponse = await getAllOldShipments({
+        page: 1,
+        limit: 10000,
+        _: Date.now()
       });
+      
+      let allShipments = [];
+      
+      // Process NEW shipments
+      if (newResponse.success && newResponse.data) {
+        const newShipments = newResponse.data.map(s => ({
+          _id: s._id,
+          shipmentNumber: s.shipmentNumber,
+          trackingNumber: s.trackingNumber || null,
+          customerName: s.customerInfo?.name || s.customerInfo?.companyName || 'N/A',
+          origin: s.shipmentDetails?.origin || 'N/A',
+          destination: s.shipmentDetails?.destination || 'N/A',
+          createdAt: s.createdAt,
+          type: 'new'
+        }));
+        allShipments = [...allShipments, ...newShipments];
+      }
+      
+      // Process OLD shipments
+      if (oldResponse.success && oldResponse.data) {
+        const oldShipments = oldResponse.data.map(s => ({
+          _id: s._id,
+          shipmentNumber: s.shipmentNumber,
+          trackingNumber: s.trackingNumber || null,
+          customerName: s.customerId?.companyName || `${s.customerId?.firstName || ''} ${s.customerId?.lastName || ''}`.trim() || 'N/A',
+          origin: s.shipmentDetails?.origin || 'N/A',
+          destination: s.shipmentDetails?.destination || 'N/A',
+          createdAt: s.createdAt,
+          type: 'old'
+        }));
+        allShipments = [...allShipments, ...oldShipments];
+      }
+      
+      // Sort by createdAt (newest first)
+      allShipments.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      
+      setShipments(allShipments);
+      applyFilter(allShipments, activeFilter);
+      
+      setPagination({
+        total: allShipments.length,
+        page: 1,
+        limit: pagination.limit,
+        pages: Math.ceil(allShipments.length / pagination.limit)
+      });
+      
+      const withTracking = allShipments.filter(s => s.trackingNumber && s.trackingNumber.trim() !== '').length;
+      setStats({
+        total: allShipments.length,
+        withTracking,
+        withoutTracking: allShipments.length - withTracking
+      });
+      
+      console.log(`✅ Total shipments: ${allShipments.length} (New: ${newResponse.data?.length || 0}, Old: ${oldResponse.data?.length || 0})`);
+      
+    } catch (error) {
+      console.error('Fetch error:', error);
+      toast.error('Failed to fetch shipments');
+    } finally {
+      if (showLoading) setLoading(false);
     }
-  } catch (error) {
-    toast.error('Failed to fetch shipments');
-  } finally {
-    if (showLoading) setLoading(false);
-  }
-};
+  };
 
   useEffect(() => {
     fetchShipments();
-  }, [pagination.page, pagination.limit]);
+  }, []);
 
   // Apply filter
   const applyFilter = (data, filterType) => {
@@ -223,7 +237,7 @@ const fetchShipments = async (showLoading = true) => {
       const filtered = shipments.filter(shipment => 
         (shipment.shipmentNumber && shipment.shipmentNumber.toLowerCase().includes(value.toLowerCase())) ||
         (shipment.trackingNumber && shipment.trackingNumber.toLowerCase().includes(value.toLowerCase())) ||
-        (shipment.customerId?.companyName && shipment.customerId.companyName.toLowerCase().includes(value.toLowerCase()))
+        (shipment.customerName && shipment.customerName.toLowerCase().includes(value.toLowerCase()))
       );
       setFilteredShipments(filtered);
     }
@@ -235,48 +249,59 @@ const fetchShipments = async (showLoading = true) => {
     setEditValue(shipment.trackingNumber || '');
   };
 
-  // Handle save tracking number - DATABASE ONLY
-// Handle save tracking number - ঠিক করা ভার্সন
-const handleSave = async (shipment) => {
-  if (!editValue.trim()) {
-    toast.warning('Tracking number cannot be empty');
-    return;
-  }
-
-  setSavingId(shipment._id);
-  try {
-    console.log('🚀 Sending to API:', {
-      shipmentId: shipment._id,
-      newTracking: editValue.trim()  // ✅ শুধু string পাঠান
-    });
-    
-    // ✅ শুধু trackingNumber string হিসেবে পাঠান
-    const result = await updateTrackingNumber(shipment._id, editValue.trim());
-
-    console.log('📦 API Result:', result);
-
-    if (result.success) {
-      toast.success('✅ Tracking number updated successfully');
-      
-      // লোকাল স্টেট আপডেট
-      const updatedShipments = shipments.map(s => 
-        s._id === shipment._id ? { ...s, trackingNumber: editValue.trim() } : s
-      );
-      
-      setShipments(updatedShipments);
-      applyFilter(updatedShipments, activeFilter);
-      
-      setEditingId(null);
-    } else {
-      toast.error(result.message || 'Update failed');
+  // Handle save tracking number
+  const handleSave = async (shipment) => {
+    if (!editValue.trim()) {
+      toast.warning('Tracking number cannot be empty');
+      return;
     }
-  } catch (error) {
-    console.error('💥 Error:', error);
-    toast.error('Update failed');
-  } finally {
-    setSavingId(null);
-  }
-};
+
+    setSavingId(shipment._id);
+    try {
+      let result;
+      
+      if (shipment.type === 'new') {
+        // Update NEW shipment tracking
+        result = await updateShipmentStatus(shipment._id, {
+          trackingNumber: editValue.trim(),
+          notes: 'Tracking number updated manually',
+          updatedBy: 'admin'
+        });
+      } else {
+        // Update OLD shipment tracking
+        result = await updateOldTrackingNumber(shipment._id, editValue.trim());
+      }
+      
+      if (result.success) {
+        toast.success('✅ Tracking number updated successfully');
+        
+        // Update local state
+        const updatedShipments = shipments.map(s => 
+          s._id === shipment._id ? { ...s, trackingNumber: editValue.trim() } : s
+        );
+        
+        setShipments(updatedShipments);
+        applyFilter(updatedShipments, activeFilter);
+        
+        // Update stats
+        const newWithTracking = updatedShipments.filter(s => s.trackingNumber && s.trackingNumber.trim() !== '').length;
+        setStats({
+          total: updatedShipments.length,
+          withTracking: newWithTracking,
+          withoutTracking: updatedShipments.length - newWithTracking
+        });
+        
+        setEditingId(null);
+      } else {
+        toast.error(result.message || 'Update failed');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Update failed');
+    } finally {
+      setSavingId(null);
+    }
+  };
 
   // Handle cancel edit
   const handleCancel = () => {
@@ -304,31 +329,9 @@ const handleSave = async (shipment) => {
     applyFilter(shipments, type);
   };
 
-  // Check database connection
-  const checkDatabase = async () => {
-    if (shipments.length === 0) {
-      toast.warning('No shipments to check');
-      return;
-    }
-    
-    const testShipment = shipments[0];
-    const testTracking = 'TEST-' + Date.now();
-    
-    try {
-      const result = await updateShipment(testShipment._id, {
-        trackingNumber: testTracking
-      });
-      
-      if (result.success) {
-        toast.success('✅ Database working!');
-        await fetchShipments(false);
-      } else {
-        toast.error('❌ Database failed');
-      }
-    } catch (error) {
-      toast.error('Database connection failed');
-    }
-  };
+  // Paginated data
+  const startIndex = (pagination.page - 1) * pagination.limit;
+  const paginatedShipments = filteredShipments.slice(startIndex, startIndex + pagination.limit);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -342,7 +345,7 @@ const handleSave = async (shipment) => {
                   <Package className="h-4 w-4 text-[#E67E22]" />
                 </div>
                 <h1 className="ml-2 text-lg font-semibold text-gray-900">
-                  Tracking Numbers (Database Only)
+                  Tracking Numbers
                 </h1>
               </div>
               <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
@@ -350,12 +353,6 @@ const handleSave = async (shipment) => {
               </span>
             </div>
             <div className="flex items-center space-x-2">
-              {/* <button
-                onClick={checkDatabase}
-                className="px-3 py-1 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700"
-              >
-                Check DB
-              </button> */}
               <button
                 onClick={handleRefresh}
                 disabled={refreshing}
@@ -450,7 +447,7 @@ const handleSave = async (shipment) => {
                       </div>
                     </td>
                   </tr>
-                ) : filteredShipments.length === 0 ? (
+                ) : paginatedShipments.length === 0 ? (
                   <tr>
                     <td colSpan="7" className="px-4 py-8 text-center">
                       <div className="flex flex-col items-center">
@@ -460,7 +457,7 @@ const handleSave = async (shipment) => {
                     </td>
                   </tr>
                 ) : (
-                  filteredShipments.map((shipment) => {
+                  paginatedShipments.map((shipment) => {
                     const hasTracking = shipment.trackingNumber && shipment.trackingNumber.trim() !== '';
                     
                     return (
@@ -527,16 +524,15 @@ const handleSave = async (shipment) => {
                         
                         <td className="px-4 py-3">
                           <div className="text-sm text-gray-900">
-                            {shipment.customerId?.companyName || 
-                             `${shipment.customerId?.firstName || ''} ${shipment.customerId?.lastName || ''}`.trim() || 'N/A'}
+                            {shipment.customerName}
                           </div>
                         </td>
                         
                         <td className="px-4 py-3">
                           <div className="flex items-center text-xs">
-                            <span className="text-gray-900">{shipment.shipmentDetails?.origin || 'N/A'}</span>
-                            <ChevronRightIcon className="h-3 w-3 mx-1 text-gray-400" />
-                            <span className="text-gray-900">{shipment.shipmentDetails?.destination || 'N/A'}</span>
+                            <span className="text-gray-900 truncate max-w-[100px]">{shipment.origin}</span>
+                            <ChevronRightIcon className="h-3 w-3 mx-1 text-gray-400 flex-shrink-0" />
+                            <span className="text-gray-900 truncate max-w-[100px]">{shipment.destination}</span>
                           </div>
                         </td>
                         
@@ -566,12 +562,12 @@ const handleSave = async (shipment) => {
           {/* Pagination */}
           {pagination.pages > 1 && (
             <div className="border-t px-4 py-3 bg-gray-50">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center space-x-4">
                   <span className="text-xs text-gray-600">
                     Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
-                    {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-                    {pagination.total} results
+                    {Math.min(pagination.page * pagination.limit, filteredShipments.length)} of{' '}
+                    {filteredShipments.length} results
                   </span>
                   <select
                     value={pagination.limit}

@@ -4,8 +4,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
+import { Lock } from "lucide-react"; // ✅ correct
 import { 
-  getAllNewShipments,  
+  getAllNewShipments,
+  updateShipmentStatus  
 } from '@/Api/newShipping';
 
 // ==================== ICONS ====================
@@ -16,7 +18,8 @@ import {
   XCircle as XCircleSolid, Clock, Truck, MapPin, User,
   ChevronsLeft, ChevronsRight, Loader2, RefreshCw,
   Box, Ship, Plane, Train, Building2, DollarSign,
-  Calendar, AlertCircle, FileText, Send, Flag
+  Calendar, AlertCircle, FileText, Send, Flag, Edit3,
+  CheckCircle, AlertTriangle
 } from 'lucide-react';
 
 // ==================== COLOR CONSTANTS ====================
@@ -102,6 +105,29 @@ const STATUS_CONFIG = {
   }
 };
 
+// All statuses in sequence
+const ALL_STATUSES = [
+  { value: 'booking_requested', label: 'Booking Requested', order: 1 },
+  { value: 'pending', label: 'Pending', order: 2 },
+  { value: 'received_at_warehouse', label: 'Received at Warehouse', order: 3 },
+  { value: 'picked_up_from_warehouse', label: 'Picked Up', order: 4 },
+  { value: 'departed_port_of_origin', label: 'Departed Origin', order: 5 },
+  { value: 'in_transit', label: 'In Transit', order: 6 },
+
+  // ✅ NEW
+  { value: 'on_hold', label: 'On Hold', order: 7 },
+
+  { value: 'arrived_at_destination_port', label: 'Arrived at Port', order: 8 },
+
+  // ✅ NEW
+  { value: 'under_customs_cleared', label: 'Under Customs Clearance', order: 9 },
+
+  { value: 'customs_clearance', label: 'Customs Clearance', order: 10 },
+  { value: 'out_for_delivery', label: 'Out for Delivery', order: 11 },
+  { value: 'delivered', label: 'Delivered', order: 12 },
+  { value: 'cancelled', label: 'Cancelled', order: 13 }
+];
+
 // ==================== SHIPMENT MODE CONFIG ====================
 const getShipmentModeIcon = (mainType) => {
   const icons = {
@@ -128,6 +154,10 @@ const getShipmentModeLabel = (mainType) => {
 // ==================== HELPER FUNCTIONS ====================
 const getShipmentProgress = (status) => STATUS_CONFIG[status]?.progress || 0;
 const getShipmentStatusDisplayText = (status) => STATUS_CONFIG[status]?.label || status?.replace(/_/g, ' ') || 'Unknown';
+const getStatusOrder = (status) => {
+  const found = ALL_STATUSES.find(s => s.value === status);
+  return found ? found.order : 0;
+};
 
 // ==================== UI COMPONENTS ====================
 
@@ -195,6 +225,22 @@ const Input = ({ type = 'text', name, value, onChange, placeholder, label, icon:
           `}
         />
       </div>
+    </div>
+  );
+};
+
+const TextArea = ({ name, value, onChange, placeholder, label, rows = 3 }) => {
+  return (
+    <div className="space-y-1">
+      {label && <label className="block text-sm font-medium text-gray-700">{label}</label>}
+      <textarea
+        name={name}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        rows={rows}
+        className="w-full px-3 py-2 text-sm border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E67E22] focus:border-transparent"
+      />
     </div>
   );
 };
@@ -282,6 +328,7 @@ const ActionMenu = ({ shipment, onAction }) => {
 
   const actions = [
     { label: 'View Details', icon: Eye, action: 'view', color: 'text-blue-600', show: true },
+    { label: 'Update Status', icon: Edit3, action: 'updateStatus', color: 'text-green-600', show: shipment.shipmentStatus !== 'delivered' && shipment.shipmentStatus !== 'cancelled' }
   ];
 
   return (
@@ -359,151 +406,642 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   );
 };
 
+// ==================== UPDATE STATUS MODAL ==================== 
+
+// ==================== UPDATE STATUS MODAL ==================== 
+
+const UpdateStatusModal = ({
+  isOpen,
+  onClose,
+  shipment,
+  currentStatus,
+  onStatusUpdate,
+}) => {
+  const [selectedStatus, setSelectedStatus] = useState("");
+  const [updateDate, setUpdateDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+  const [updateTime, setUpdateTime] = useState(
+    new Date().toTimeString().slice(0, 5)
+  );
+  const [remarks, setRemarks] = useState("");
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const currentOrder = getStatusOrder(currentStatus);
+
+  // Get all statuses based on current status
+  const getAvailableStatuses = () => {
+    if (currentStatus === 'on_hold') {
+      // When on hold, only show Resume (previous active status) and Cancel
+      const previousActiveStatus = shipment?.lastActiveStatus || 'in_transit';
+      return [
+        { value: previousActiveStatus, label: `Resume (${getShipmentStatusDisplayText(previousActiveStatus)})`, order: getStatusOrder(previousActiveStatus), isResume: true },
+        { value: 'cancelled', label: 'Cancelled', order: 99, isCancelled: true }
+      ];
+    }
+    
+    // Normal flow - show all statuses
+    return ALL_STATUSES;
+  };
+
+  const availableStatuses = getAvailableStatuses();
+
+  // Get immediate next status for normal flow
+  const getImmediateNextStatus = () => {
+    if (currentStatus === 'on_hold') return null;
+    const next = ALL_STATUSES.find((s) => s.order === currentOrder + 1);
+    return next?.value || null;
+  };
+
+  const immediateNextStatus = getImmediateNextStatus();
+
+  // Check if status is selectable
+  const isStatusSelectable = (statusValue, statusItem) => {
+    // If on hold, only resume and cancel are selectable
+    if (currentStatus === 'on_hold') {
+      return statusItem.isResume || statusItem.isCancelled;
+    }
+
+    // Normal flow rules
+    if (statusValue === 'on_hold') return true;
+    if (statusValue === 'cancelled') return true;
+    return statusValue === immediateNextStatus;
+  };
+
+  // Check if status is past (completed)
+  const isPast = (order) => {
+    if (currentStatus === 'on_hold') return false;
+    return order < currentOrder;
+  };
+
+  // Check if status is current
+  const isCurrent = (order, value) => {
+    if (currentStatus === 'on_hold') return false;
+    return order === currentOrder && value === currentStatus;
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!selectedStatus) {
+      toast.error("Please select a status");
+      return;
+    }
+    setShowConfirm(true);
+  };
+
+  const handleConfirm = async () => {
+    setIsUpdating(true);
+    try {
+      const updateDateTime = `${updateDate}T${updateTime}:00`;
+
+      const payload = {
+        status: selectedStatus,
+        notes: remarks,
+        updatedBy: "admin",
+        updateDateTime,
+      };
+
+      // If resuming from on_hold, send the status to resume to
+      if (currentStatus === 'on_hold' && selectedStatus !== 'cancelled') {
+        payload.resumeTo = selectedStatus;
+      }
+
+      const response = await updateShipmentStatus(shipment._id, payload);
+
+      if (response.success) {
+        toast.success(
+          currentStatus === 'on_hold' && selectedStatus !== 'cancelled'
+            ? `Resumed to ${getShipmentStatusDisplayText(selectedStatus)}`
+            : `Updated → ${getShipmentStatusDisplayText(selectedStatus)}`
+        );
+        onStatusUpdate(selectedStatus);
+        onClose();
+      } else {
+        toast.error(response.message || "Update failed");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Update failed");
+    } finally {
+      setIsUpdating(false);
+      setShowConfirm(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <>
+      <Modal isOpen={isOpen} onClose={onClose} title="Update Shipment Status" size="md">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* CURRENT STATUS */}
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <p className="text-xs text-gray-500 mb-1">Current Status</p>
+            <StatusBadge status={currentStatus} />
+            {currentStatus === 'on_hold' && (
+              <p className="text-xs text-orange-600 mt-2">
+                ⚠️ Shipment is on hold. You can resume or cancel.
+              </p>
+            )}
+          </div>
+
+          {/* INFO BOX */}
+          {currentStatus !== 'on_hold' && (
+            <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg text-xs text-blue-700">
+              <AlertCircle className="inline h-3 w-3 mr-1" />
+              Only next step, On Hold, or Cancel allowed
+            </div>
+          )}
+
+          {/* STATUS LIST */}
+          <div className="space-y-2 max-h-64 overflow-y-auto border rounded-lg p-2">
+            {availableStatuses.map((status) => {
+              const statusValue = status.value || status;
+              const statusLabel = status.label || getShipmentStatusDisplayText(statusValue);
+              const isResumeItem = status.isResume;
+              const isCancelledItem = status.isCancelled;
+              
+              const selectable = isStatusSelectable(statusValue, status);
+              const disabled = !selectable;
+
+              const past = isPast(status.order);
+              const current = isCurrent(status.order, statusValue);
+              const next = statusValue === immediateNextStatus && currentStatus !== 'on_hold';
+              const isOnHold = statusValue === 'on_hold' && currentStatus !== 'on_hold';
+
+              // Special styling for on_hold status in normal flow
+              if (isOnHold && !disabled) {
+                return (
+                  <label
+                    key={statusValue}
+                    className={`
+                      flex items-center p-3 rounded-lg border-2 border-dashed
+                      ${selectedStatus === statusValue ? "border-orange-500 bg-orange-50" : "border-yellow-400 bg-yellow-50"}
+                      hover:bg-yellow-100 cursor-pointer transition-all
+                    `}
+                  >
+                    <input
+                      type="radio"
+                      disabled={disabled}
+                      value={statusValue}
+                      checked={selectedStatus === statusValue}
+                      onChange={(e) => {
+                        if (selectable) setSelectedStatus(e.target.value);
+                      }}
+                    />
+                    <div className="ml-3 flex-1 flex justify-between items-center">
+                      <span className="text-sm font-medium text-yellow-700">
+                        ⏸️ {statusLabel}
+                      </span>
+                      <span className="text-xs bg-yellow-200 text-yellow-800 px-2 rounded-full">
+                        Pause Shipment
+                      </span>
+                    </div>
+                  </label>
+                );
+              }
+
+              // Resume item styling
+              if (isResumeItem) {
+                return (
+                  <label
+                    key={statusValue}
+                    className={`
+                      flex items-center p-3 rounded-lg border-2 border-green-500 bg-green-50
+                      ${selectedStatus === statusValue ? "border-green-700 bg-green-100" : ""}
+                      hover:bg-green-100 cursor-pointer transition-all
+                    `}
+                  >
+                    <input
+                      type="radio"
+                      disabled={disabled}
+                      value={statusValue}
+                      checked={selectedStatus === statusValue}
+                      onChange={(e) => {
+                        if (selectable) setSelectedStatus(e.target.value);
+                      }}
+                    />
+                    <div className="ml-3 flex-1 flex justify-between items-center">
+                      <span className="text-sm font-medium text-green-700">
+                        ▶️ {statusLabel}
+                      </span>
+                      <span className="text-xs bg-green-200 text-green-800 px-2 rounded-full">
+                        Resume
+                      </span>
+                    </div>
+                  </label>
+                );
+              }
+
+              // Normal status styling
+              return (
+                <label
+                  key={statusValue}
+                  className={`
+                    flex items-center p-3 rounded-lg border
+                    ${current ? "border-blue-400 bg-blue-50" : ""}
+                    ${selectedStatus === statusValue ? "border-orange-500 bg-orange-50" : ""}
+                    ${disabled ? "opacity-60 bg-gray-50 cursor-not-allowed" : "hover:bg-gray-50 cursor-pointer"}
+                  `}
+                >
+                  <input
+                    type="radio"
+                    disabled={disabled}
+                    value={statusValue}
+                    checked={selectedStatus === statusValue}
+                    onChange={(e) => {
+                      if (selectable) setSelectedStatus(e.target.value);
+                    }}
+                  />
+
+                  <div className="ml-3 flex-1 flex justify-between items-center flex-wrap gap-2">
+                    <span className={`text-sm font-medium ${isCancelledItem ? "text-red-600" : ""}`}>
+                      {statusLabel}
+                    </span>
+
+                    <div className="flex gap-2 flex-wrap">
+                      {next && !isCancelledItem && (
+                        <span className="text-xs bg-green-100 text-green-700 px-2 rounded">
+                          Next Step
+                        </span>
+                      )}
+
+                      {current && (
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 rounded">
+                          Current
+                        </span>
+                      )}
+
+                      {past && (
+                        <span className="text-xs bg-gray-200 text-gray-600 px-2 rounded">
+                          Completed
+                        </span>
+                      )}
+
+                      {disabled && !isCancelledItem && !isOnHold && !isResumeItem && (
+                        <span className="text-xs bg-gray-100 text-gray-500 px-2 rounded flex items-center">
+                          <Lock className="h-3 w-3 mr-1" />
+                          Locked
+                        </span>
+                      )}
+
+                      {isCancelledItem && (
+                        <span className="text-xs bg-red-100 text-red-700 px-2 rounded">
+                          Cancel Shipment
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+
+          {/* DATE AND TIME */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Update Date
+              </label>
+              <input
+                type="date"
+                value={updateDate}
+                onChange={(e) => setUpdateDate(e.target.value)}
+                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Update Time
+              </label>
+              <input
+                type="time"
+                value={updateTime}
+                onChange={(e) => setUpdateTime(e.target.value)}
+                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                required
+              />
+            </div>
+          </div>
+
+          {/* REMARKS */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Remarks / Notes
+            </label>
+            <textarea
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              rows="3"
+              className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              placeholder={
+                currentStatus === 'on_hold'
+                  ? "Reason for resuming or cancelling..."
+                  : "Reason for status change..."
+              }
+            />
+          </div>
+
+          {/* BUTTONS */}
+          <div className="flex justify-end gap-3 pt-3">
+            <Button type="button" variant="light" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" disabled={!selectedStatus}>
+              Continue
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* CONFIRM MODAL */}
+      <Modal isOpen={showConfirm} onClose={() => setShowConfirm(false)} title="Confirm Status Update" size="sm">
+        <div className="text-center space-y-4">
+          <AlertTriangle className="h-12 w-12 text-orange-500 mx-auto" />
+          <div>
+            <p className="text-sm text-gray-600">Change status from</p>
+            <p className="text-lg font-semibold text-gray-900 my-1">
+              {getShipmentStatusDisplayText(currentStatus)}
+            </p>
+            <p className="text-sm text-gray-600">→</p>
+            <p className="text-lg font-semibold text-orange-600 my-1">
+              {selectedStatus === 'on_hold' 
+                ? 'On Hold (Paused)' 
+                : currentStatus === 'on_hold' && selectedStatus !== 'cancelled'
+                ? `Resume to ${getShipmentStatusDisplayText(selectedStatus)}`
+                : getShipmentStatusDisplayText(selectedStatus)}
+            </p>
+          </div>
+          {remarks && (
+            <div className="bg-gray-50 p-3 rounded-lg text-left">
+              <p className="text-xs text-gray-500 mb-1">Remarks:</p>
+              <p className="text-sm text-gray-700">{remarks}</p>
+            </div>
+          )}
+          <div className="flex justify-end gap-3 pt-3">
+            <Button type="button" variant="light" onClick={() => setShowConfirm(false)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="primary" onClick={handleConfirm} isLoading={isUpdating}>
+              Confirm Update
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </>
+  );
+};
+
 // ==================== SHIPMENT DETAILS MODAL ====================
-const ShipmentDetailsModal = ({ isOpen, onClose, shipment }) => {
+const ShipmentDetailsModal = ({ isOpen, onClose, shipment, onStatusUpdated }) => {
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [currentShipmentStatus, setCurrentShipmentStatus] = useState(shipment?.shipmentStatus || shipment?.status);
+
+  useEffect(() => {
+    if (shipment) {
+      setCurrentShipmentStatus(shipment.shipmentStatus || shipment.status);
+    }
+  }, [shipment]);
+
   if (!isOpen || !shipment) return null;
 
-  const progress = getShipmentProgress(shipment.shipmentStatus || shipment.status);
+  const progress = getShipmentProgress(currentShipmentStatus);
   const totalWeight = shipment.shipmentDetails?.totalWeight || 0;
   const totalPackages = shipment.shipmentDetails?.totalPackages || 0;
 
+  const handleStatusUpdate = (newStatus) => {
+    setCurrentShipmentStatus(newStatus);
+    if (onStatusUpdated) {
+      onStatusUpdated();
+    }
+  };
+
+  const handleUpdateStatusClick = () => {
+    setShowUpdateModal(true);
+  };
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Shipment Details" size="lg">
-      <div className="space-y-5">
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h4 className="text-lg font-semibold text-gray-900">#{shipment.shipmentNumber}</h4>
-            {shipment.trackingNumber && (
-              <p className="text-sm text-gray-500">Tracking: {shipment.trackingNumber}</p>
-            )}
-          </div>
-          <StatusBadge status={shipment.shipmentStatus || shipment.status} size="lg" />
-        </div>
-
-        {/* Progress */}
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">Shipment Progress</span>
-            <span className="text-xs text-gray-500">{progress}%</span>
-          </div>
-          <ProgressBar progress={progress} />
-        </div>
-
-        {/* Customer Info */}
-        <div className="border rounded-lg p-4">
-          <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-            <User className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />
-            Customer Information
-          </h5>
-          <div className="grid grid-cols-2 gap-4">
+    <>
+      <Modal isOpen={isOpen} onClose={onClose} title="Shipment Details" size="lg">
+        <div className="space-y-5">
+          {/* Header with Status Update Button */}
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
-              <p className="text-xs text-gray-500">Name</p>
-              <p className="text-sm font-medium">{shipment.customerInfo?.name || 'N/A'}</p>
+              <h4 className="text-lg font-semibold text-gray-900">#{shipment.shipmentNumber}</h4>
+              {shipment.trackingNumber && (
+                <p className="text-sm text-gray-500">Tracking: {shipment.trackingNumber}</p>
+              )}
             </div>
-            <div>
-              <p className="text-xs text-gray-500">Company</p>
-              <p className="text-sm font-medium">{shipment.customerInfo?.companyName || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Email</p>
-              <p className="text-sm font-medium">{shipment.customerInfo?.email || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Phone</p>
-              <p className="text-sm font-medium">{shipment.customerInfo?.phone || 'N/A'}</p>
+            <div className="flex items-center gap-3">
+              <StatusBadge status={currentShipmentStatus} size="lg" />
+              {currentShipmentStatus !== 'delivered' && currentShipmentStatus !== 'cancelled' && (
+                <Button size="sm" variant="light" onClick={handleUpdateStatusClick} icon={<Edit3 className="h-4 w-4" />}>
+                  Update Status
+                </Button>
+              )}
             </div>
           </div>
-        </div>
 
-        {/* Shipment Details */}
-        <div className="border rounded-lg p-4">
-          <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-            <Package className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />
-            Shipment Details
-          </h5>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-gray-500">Origin</p>
-              <p className="text-sm font-medium">{shipment.shipmentDetails?.origin || 'N/A'}</p>
+          {/* Progress Bar */}
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-700">Shipment Progress</span>
+              <span className="text-xs text-gray-500">{progress}%</span>
             </div>
-            <div>
-              <p className="text-xs text-gray-500">Destination</p>
-              <p className="text-sm font-medium">{shipment.shipmentDetails?.destination || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Mode</p>
-              <ShipmentModeBadge classification={shipment.shipmentClassification} />
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Shipping Mode</p>
-              <p className="text-sm font-medium">{shipment.shipmentDetails?.shippingMode || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Total Packages</p>
-              <p className="text-sm font-medium">{totalPackages}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Total Weight</p>
-              <p className="text-sm font-medium">{totalWeight} kg</p>
-            </div>
+            <ProgressBar progress={progress} />
           </div>
-        </div>
 
-        {/* Dates */}
-        <div className="border rounded-lg p-4">
-          <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-            <Calendar className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />
-            Schedule
-          </h5> 
-        </div>
-
-        {/* Pricing */}
-        <div className="border rounded-lg p-4">
-          <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-            <DollarSign className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />
-            Pricing
-          </h5>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-gray-500">Quoted Amount</p>
-              <p className="text-sm font-medium">{shipment.quotedPrice?.amount} {shipment.quotedPrice?.currency}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Payment Status</p>
-              <p className="text-sm font-medium capitalize">{shipment.payment?.status || 'N/A'}</p>
-            </div>
+          {/* Status Timeline Visualization */}
+          {/* Status Timeline Visualization - WITHOUT On Hold */}
+<div className="border rounded-lg p-4">
+  <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+    <Activity className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />
+    Status Timeline
+  </h5>
+  <div className="flex flex-wrap gap-2">
+    {ALL_STATUSES.filter(s => s.value !== 'cancelled' && s.value !== 'on_hold').map((status) => {
+      const statusOrder = status.order;
+      const currentOrder = getStatusOrder(currentShipmentStatus);
+      const isCompleted = statusOrder < currentOrder;
+      const isCurrent = status.value === currentShipmentStatus;
+      
+      // Adjust order for display (skip on_hold in counting)
+      let displayOrder = statusOrder;
+      if (statusOrder > getStatusOrder('on_hold') && getStatusOrder('on_hold') !== 0) {
+        displayOrder = statusOrder - 1;
+      }
+      
+      return (
+        <div key={status.value} className="flex items-center">
+          <div className={`
+            px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap
+            ${isCompleted ? 'bg-green-100 text-green-700' : ''}
+            ${isCurrent ? 'bg-orange-100 text-orange-700 border border-orange-300' : ''}
+            ${!isCompleted && !isCurrent ? 'bg-gray-100 text-gray-500' : ''}
+          `}>
+            {status.label}
           </div>
+          {displayOrder < 11 && (
+            <ChevronRight className="h-3 w-3 mx-1 text-gray-400 flex-shrink-0" />
+          )}
         </div>
+      );
+    })}
+  </div>
+</div>
 
-        {/* Timeline */}
-        {shipment.timeline && shipment.timeline.length > 0 && (
+          {/* Rest of the modal content remains the same */}
+          {/* Customer Info */}
           <div className="border rounded-lg p-4">
             <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-              <Activity className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />
-              Timeline
+              <User className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />
+              Customer Information
             </h5>
-            <div className="space-y-3 max-h-60 overflow-y-auto">
-              {shipment.timeline.map((event, index) => (
-                <div key={index} className="flex items-start space-x-3">
-                  <div className="flex-shrink-0">
-                    <div className="w-2 h-2 mt-2 rounded-full bg-[#E67E22]"></div>
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900 capitalize">{event.status?.replace(/_/g, ' ')}</p>
-                    {event.description && <p className="text-xs text-gray-500">{event.description}</p>} 
-                  </div>
-                </div>
-              ))}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-500">Name</p>
+                <p className="text-sm font-medium">{shipment.customerInfo?.name || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Company</p>
+                <p className="text-sm font-medium">{shipment.customerInfo?.companyName || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Email</p>
+                <p className="text-sm font-medium">{shipment.customerInfo?.email || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Phone</p>
+                <p className="text-sm font-medium">{shipment.customerInfo?.phone || 'N/A'}</p>
+              </div>
             </div>
           </div>
-        )}
 
-        <div className="flex justify-end pt-4">
-          <Button type="button" variant="primary" onClick={onClose}>Close</Button>
+          {/* Shipment Details */}
+          <div className="border rounded-lg p-4">
+            <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+              <Package className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />
+              Shipment Details
+            </h5>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-500">Origin</p>
+                <p className="text-sm font-medium">{shipment.shipmentDetails?.origin || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Destination</p>
+                <p className="text-sm font-medium">{shipment.shipmentDetails?.destination || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Mode</p>
+                <ShipmentModeBadge classification={shipment.shipmentClassification} />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Shipping Mode</p>
+                <p className="text-sm font-medium">{shipment.shipmentDetails?.shippingMode || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Total Packages</p>
+                <p className="text-sm font-medium">{totalPackages}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Total Weight</p>
+                <p className="text-sm font-medium">{totalWeight} kg</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Dates */}
+          <div className="border rounded-lg p-4">
+            <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+              <Calendar className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />
+              Schedule
+            </h5>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-500">Created Date</p>
+                <p className="text-sm font-medium">
+                  {shipment.createdAt ? new Date(shipment.createdAt).toLocaleDateString() : 'N/A'}
+                </p>
+              </div>
+              {shipment.lastStatusUpdate && (
+                <div>
+                  <p className="text-xs text-gray-500">Last Status Update</p>
+                  <p className="text-sm font-medium">
+                    {new Date(shipment.lastStatusUpdate).toLocaleString()}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Pricing */}
+          <div className="border rounded-lg p-4">
+            <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+              <DollarSign className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />
+              Pricing
+            </h5>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-500">Quoted Amount</p>
+                <p className="text-sm font-medium">{shipment.quotedPrice?.amount} {shipment.quotedPrice?.currency}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Payment Status</p>
+                <p className="text-sm font-medium capitalize">{shipment.payment?.status || 'N/A'}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Timeline Events */}
+          {shipment.timeline && shipment.timeline.length > 0 && (
+            <div className="border rounded-lg p-4">
+              <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                <Clock className="h-4 w-4 mr-2" style={{ color: COLORS.primary }} />
+                Activity Timeline
+              </h5>
+              <div className="space-y-3 max-h-60 overflow-y-auto">
+                {shipment.timeline.slice().reverse().map((event, index) => (
+                  <div key={index} className="flex items-start space-x-3">
+                    <div className="flex-shrink-0">
+                      <div className="w-2 h-2 mt-2 rounded-full" style={{ backgroundColor: COLORS.primary }}></div>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900 capitalize">
+                        {event.status?.replace(/_/g, ' ')}
+                      </p>
+                      {event.description && (
+                        <p className="text-xs text-gray-500">{event.description}</p>
+                      )}
+                      {event.timestamp && (
+                        <p className="text-xs text-gray-400 mt-1">
+                          {new Date(event.timestamp).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end pt-4">
+            <Button type="button" variant="primary" onClick={onClose}>Close</Button>
+          </div>
         </div>
-      </div>
-    </Modal>
+      </Modal>
+
+      {/* Update Status Modal */}
+      <UpdateStatusModal
+        isOpen={showUpdateModal}
+        onClose={() => setShowUpdateModal(false)}
+        shipment={shipment}
+        currentStatus={currentShipmentStatus}
+        onStatusUpdate={handleStatusUpdate}
+      />
+    </>
   );
 };
 
@@ -519,7 +1057,6 @@ export default function AllShipments() {
   const [selectedShipment, setSelectedShipment] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
 
-  // Fetch shipments
   const fetchShipments = useCallback(async () => {
     setLoading(true);
     try {
@@ -533,7 +1070,6 @@ export default function AllShipments() {
       if (searchTerm) params.search = searchTerm;
 
       const response = await getAllNewShipments(params);
-      console.log('API Response:', response);
       
       if (response.success) {
         setShipments(response.data || []);
@@ -554,7 +1090,6 @@ export default function AllShipments() {
     fetchShipments();
   }, [fetchShipments]);
 
-  // Handle search with debounce
   useEffect(() => {
     const timer = setTimeout(() => {
       if (searchTerm !== undefined) {
@@ -581,17 +1116,19 @@ export default function AllShipments() {
     setSelectedShipment(shipment);
     if (action === 'view') {
       setShowDetailsModal(true);
+    } else if (action === 'updateStatus') {
+      setShowDetailsModal(true);
     }
+  };
+
+  const handleStatusUpdated = () => {
+    fetchShipments();
   };
 
   const filterByStatus = (status) => {
     setActiveStat(status);
-    // Filter shipments based on status
     if (status === 'all') {
       fetchShipments();
-    } else {
-      // You can implement client-side filtering or API call with status param
-      console.log('Filter by status:', status);
     }
   };
 
@@ -766,7 +1303,7 @@ export default function AllShipments() {
                           <div className="mt-1">
                             <ShipmentModeBadge classification={shipment.shipmentClassification} />
                           </div>
-                        </td> 
+                        </td>
                         <td className="px-4 py-3">
                           <div className="text-xs">
                             <div className="text-gray-900">{totalPackages} pkgs</div>
@@ -854,7 +1391,8 @@ export default function AllShipments() {
       <ShipmentDetailsModal 
         isOpen={showDetailsModal} 
         onClose={() => setShowDetailsModal(false)} 
-        shipment={selectedShipment} 
+        shipment={selectedShipment}
+        onStatusUpdated={handleStatusUpdated}
       />
     </div>
   );

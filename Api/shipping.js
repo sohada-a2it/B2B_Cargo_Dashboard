@@ -9,16 +9,44 @@ import Cookies from 'js-cookie';
  */
 export const createShipment = async (shipmentData) => {
   try {
-    const response = await axiosInstance.post('/create-shipments', shipmentData);
+    console.log('📤 Sending shipment data:', shipmentData);
+    
+    const response = await axiosInstance.post('/create-shipments', shipmentData, {
+      timeout: 30000 // 30 seconds timeout
+    });
 
-    if (response.data.success) {
-      return response.data.data; // created shipment object
+    console.log('📥 Full response from server:', response);
+    console.log('📥 Response data:', response.data);
+    console.log('📥 Response success:', response.data?.success);
+    console.log('📥 Response data field:', response.data?.data);
+
+    // Check if response exists and has success flag
+    if (response.data && response.data.success === true) {
+      // Return the full response object with success flag
+      return {
+        success: true,
+        data: response.data.data || response.data,
+        message: response.data.message || 'Shipment created successfully'
+      };
     }
 
-    throw new Error(response.data.message || 'Failed to create shipment');
+    // If success is false
+    throw new Error(response.data?.message || 'Failed to create shipment');
+    
   } catch (error) {
-    console.error('❌ Create shipment error:', error);
-    return null;
+    console.error('❌ Create shipment error details:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+      code: error.code
+    });
+    
+    // Return error object instead of throwing
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || 'Failed to create shipment',
+      error: error.response?.data?.error
+    };
   }
 };
 // 1. GET ALL SHIPMENTS (with filters & pagination) 

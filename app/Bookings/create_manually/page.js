@@ -9,7 +9,7 @@ import { createShipment } from '@/Api/shipping';
 import { registerWithoutOTP } from '@/Api/Authentication'; // Make sure this import exists
 
 // Location functions
-import { getStates as getStatesFromApi, fetchCitiesByState as fetchCitiesByStateFromApi } from '@/Api/location';
+import { getStates  ,fetchCitiesByState   } from '@/Api/location';
 
 // Icons
 import {
@@ -109,6 +109,7 @@ const SHIPMENT_STATUSES = [
   { value: 'departed_port_of_origin', label: 'Departed Port of Origin', color: 'cyan', icon: Ship },
   { value: 'in_transit_sea_freight', label: 'In Transit (Sea Freight)', color: 'blue', icon: Ship },
   { value: 'arrived_at_destination_port', label: 'Arrived at Destination Port', color: 'cyan', icon: Anchor },
+  { value: 'under_customs_cleared', label: 'Under Customs Cleared', color: 'green', icon: Flag },
   { value: 'customs_cleared', label: 'Customs Cleared', color: 'green', icon: Flag },
   { value: 'out_for_delivery', label: 'Out for Delivery', color: 'orange', icon: Truck },
   { value: 'delivered', label: 'Delivered', color: 'green', icon: CheckCircle },
@@ -122,38 +123,7 @@ const SERVICE_TYPES = [
   { value: 'express', label: 'Express' },
   { value: 'overnight', label: 'Overnight' },
   { value: 'economy', label: 'Economy' }
-];
-
-// ==================== HELPER FUNCTIONS ====================
-const getStates = (country) => {
-  const statesMap = {
-    'USA': ['California', 'Texas', 'New York', 'Florida', 'Illinois'],
-    'UK': ['England', 'Scotland', 'Wales', 'Northern Ireland'],
-    'Canada': ['Ontario', 'Quebec', 'British Columbia', 'Alberta']
-  };
-  return statesMap[country] || [];
-};
-
-const fetchCitiesByState = (country, state) => {
-  const citiesMap = {
-    'USA': {
-      'California': ['Los Angeles', 'San Francisco', 'San Diego'],
-      'Texas': ['Houston', 'Dallas', 'Austin'],
-      'New York': ['New York City', 'Buffalo', 'Albany']
-    },
-    'UK': {
-      'England': ['London', 'Manchester', 'Birmingham'],
-      'Scotland': ['Edinburgh', 'Glasgow'],
-      'Wales': ['Cardiff', 'Swansea']
-    },
-    'Canada': {
-      'Ontario': ['Toronto', 'Ottawa', 'Mississauga'],
-      'Quebec': ['Montreal', 'Quebec City'],
-      'British Columbia': ['Vancouver', 'Victoria']
-    }
-  };
-  return citiesMap[country]?.[state] || [];
-};
+]; 
 
 // ==================== COMPONENTS ====================
 const Button = ({ children, type = 'button', variant = 'primary', size = 'md', isLoading = false, disabled = false, onClick, className = '', icon: Icon, iconPosition = 'left' }) => {
@@ -420,12 +390,20 @@ export default function CreateBooking() {
   }, []);
 
   // ==================== LOCATION FUNCTIONS ====================
+  // ==================== LOCATION FUNCTIONS ====================
+  
   const loadStates = useCallback((country) => {
     if (!country) return;
+    
     setLoadingLocation(true);
     try {
       const statesData = getStates(country);
-      setStates(statesData || []);
+      if (statesData && statesData.length > 0) {
+        const stateNames = statesData.map(s => s.name);
+        setStates(stateNames);
+      } else {
+        setStates([]);
+      }
     } catch (error) {
       console.error('Error loading states:', error);
       setStates([]);
@@ -436,13 +414,38 @@ export default function CreateBooking() {
 
   const loadCities = useCallback((country, state) => {
     if (!country || !state) return;
+    
     setLoadingLocation(true);
     try {
       const citiesData = fetchCitiesByState(country, state);
-      setCities(citiesData || []);
+      if (citiesData && citiesData.length > 0) {
+        const cityNames = citiesData.map(c => c.name);
+        setCities(cityNames);
+      } else {
+        setCities([]);
+      }
     } catch (error) {
       console.error('Error loading cities:', error);
       setCities([]);
+    } finally {
+      setLoadingLocation(false);
+    }
+  }, []);
+
+  const loadPostalCodes = useCallback((country, city) => {
+    if (!country || !city) return;
+    
+    setLoadingLocation(true);
+    try {
+      const postalData = getPostalCodes(country, city);
+      if (postalData && postalData.length > 0) {
+        setPostalCodes(postalData);
+      } else {
+        setPostalCodes([]);
+      }
+    } catch (error) {
+      console.error('Error loading postal codes:', error);
+      setPostalCodes([]);
     } finally {
       setLoadingLocation(false);
     }
@@ -587,14 +590,34 @@ export default function CreateBooking() {
   }, [formData.shipmentClassification.mainType]);
 
   // Generate tracking number
-  const generateTrackingNumber = () => {
-    const prefix = 'CLG';
-    const timestamp = Date.now().toString().slice(-8);
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    const trackingNum = `${prefix}${timestamp}${random}`;
+ const generateTrackingNumber = () => {
+    const prefix = 'CLG-';
+    
+    // Remove confusing characters (I, O, 0, 1)
+    const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // 24 letters (no I, O)
+    const numbers = '23456789'; // 8 numbers (no 0, 1)
+    
+    let randomPart = '';
+    
+    // Add 2 random letters
+    for (let i = 0; i < 2; i++) {
+        randomPart += letters[Math.floor(Math.random() * letters.length)];
+    }
+    
+    // Add 4 random numbers
+    for (let i = 0; i < 4; i++) {
+        randomPart += numbers[Math.floor(Math.random() * numbers.length)];
+    }
+    
+    // Add 2 random letters
+    for (let i = 0; i < 2; i++) {
+        randomPart += letters[Math.floor(Math.random() * letters.length)];
+    }
+    
+    const trackingNum = `${prefix}${randomPart}`;
     setFormData(prev => ({ ...prev, trackingNumber: trackingNum }));
     toast.success(`Tracking number generated: ${trackingNum}`);
-  };
+};
 
   // ==================== TRACKING TIMELINE HANDLERS ====================
   const addTrackingStep = () => {
@@ -868,9 +891,15 @@ const handleSubmit = async (e) => {
     return;
   }
 
-  // 🔥 Validate tracking number
+  // Auto-generate tracking number if empty
   if (!formData.trackingNumber) {
-    toast.error('Please generate or enter a tracking number');
+    generateTrackingNumber();
+    // Wait a moment for tracking number to be set
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  if (!formData.trackingNumber) {
+    toast.error('Please generate a tracking number');
     return;
   }
 
@@ -879,154 +908,118 @@ const handleSubmit = async (e) => {
   setServerErrors([]);
 
   try {
-    let customerId = null;
-
-    if (formData.sender.email) {
-      try {
-        customerId = await createCustomerFromSender(formData.sender);
-      } catch (err) {
-        console.warn('Customer creation failed, continuing...');
-      }
-    }
-
+    // Build timeline entries
     const timelineEntries = trackingTimeline.map(entry => ({
       status: entry.status,
-      description: entry.description,
+      description: entry.description || '',
       updatedBy: adminUser?._id,
-      timestamp: entry.timestamp,
+      timestamp: entry.timestamp || new Date(),
       metadata: entry.metadata || {}
     }));
 
+    if (timelineEntries.length === 0) {
+      timelineEntries.push({
+        status: formData.status || 'booking_requested',
+        description: 'Shipment created',
+        updatedBy: adminUser?._id,
+        timestamp: new Date()
+      });
+    }
+
+    // Build shipment payload
     const shipmentData = {
-      customerId: customerId || null,
       createdBy: adminUser?._id,
-
       serviceType: formData.serviceType,
-
       shipmentClassification: {
         mainType: formData.shipmentClassification.mainType,
         subType: formData.shipmentClassification.subType
       },
-
       shipmentDetails: {
         origin: formData.shipmentDetails.origin,
         destination: formData.shipmentDetails.destination,
         shippingMode: formData.shipmentDetails.shippingMode,
-
         packageDetails: formData.shipmentDetails.packageDetails.map(pkg => ({
           description: pkg.description,
-          packagingType: pkg.packagingType,
-          quantity: Number(pkg.quantity),
-          weight: Number(pkg.weight),
-          volume: Number(pkg.volume),
-          dimensions: pkg.dimensions,
+          packagingType: pkg.packagingType || 'carton',
+          quantity: Number(pkg.quantity) || 1,
+          weight: Number(pkg.weight) || 0,
+          volume: Number(pkg.volume) || 0,
+          dimensions: pkg.dimensions || {},
           productCategory: pkg.productCategory || 'Others',
           hsCode: pkg.hsCode || '',
-          value: {
-            amount: Number(pkg.value?.amount) || 0,
-            currency: pkg.value?.currency || formData.quotedPrice.currency
+          value: { 
+            amount: Number(pkg.value?.amount) || 0, 
+            currency: pkg.value?.currency || formData.quotedPrice.currency 
           },
           hazardous: pkg.hazardous || false,
           temperatureControlled: pkg.temperatureControlled || { required: false }
         })),
-
         specialInstructions: formData.shipmentDetails.specialInstructions || '',
         referenceNumber: formData.shipmentDetails.referenceNumber || ''
       },
-
       dates: {
         estimatedDeparture: formData.dates.estimatedDeparture,
         estimatedArrival: formData.dates.estimatedArrival
       },
-
       quotedPrice: {
         amount: Number(formData.quotedPrice.amount),
         currency: formData.quotedPrice.currency,
-        breakdown: formData.quotedPrice.breakdown,
-        notes: formData.quotedPrice.notes,
+        breakdown: formData.quotedPrice.breakdown || {},
+        notes: formData.quotedPrice.notes || '',
         quotedBy: adminUser?._id,
-        quotedAt: new Date(),
-        validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        quotedAt: new Date()
       },
-
       pricingStatus: formData.pricingStatus,
-
       payment: {
         mode: formData.payment.mode,
         currency: formData.payment.currency,
         amount: Number(formData.quotedPrice.amount)
       },
-
-      sender: {
-        name: formData.sender.name,
-        companyName: formData.sender.companyName || '',
-        email: formData.sender.email,
-        phone: formData.sender.phone,
-        address: {
-          addressLine1: formData.sender.address.addressLine1 || 'N/A',
-          addressLine2: formData.sender.address.addressLine2 || '',
-          city: formData.sender.address.city || 'N/A',
-          state: formData.sender.address.state || '',
-          country: formData.sender.address.country || 'N/A',
-          postalCode: formData.sender.address.postalCode || ''
-        },
-        pickupDate: formData.sender.pickupDate || null,
-        pickupInstructions: formData.sender.pickupInstructions || ''
-      },
-
-      receiver: {
-        name: formData.receiver.name,
-        companyName: formData.receiver.companyName || '',
-        email: formData.receiver.email,
-        phone: formData.receiver.phone,
-        address: {
-          addressLine1: formData.receiver.address.addressLine1,
-          addressLine2: formData.receiver.address.addressLine2 || '',
-          city: formData.receiver.address.city,
-          state: formData.receiver.address.state,
-          country: formData.receiver.address.country,
-          postalCode: formData.receiver.address.postalCode || ''
-        },
-        deliveryInstructions: formData.receiver.deliveryInstructions || '',
-        isResidential: formData.receiver.isResidential || false
-      },
-
+      sender: formData.sender,
+      receiver: formData.receiver,
       courier: {
         company: formData.courier.company,
         serviceType: formData.serviceType
       },
-
-      // ✅ IMPORTANT: trackingNumber যোগ করুন
-      trackingNumber: formData.trackingNumber,  // ← এই লাইনটি আনকমেন্ট করুন
-      
+      trackingNumber: formData.trackingNumber,
       status: formData.status,
       shipmentStatus: formData.shipmentStatus,
-
       timeline: timelineEntries
     };
 
-    console.log('Submitting shipment with tracking:', shipmentData.trackingNumber);
-
+    console.log('📤 Submitting shipment data:', shipmentData);
+    
     const response = await createShipment(shipmentData);
-
+    
+    console.log('📥 Response from createShipment:', response);
     toast.dismiss(loadingToast);
 
-    if (response && response.success) {
-      toast.success(`🚀 Shipment created! Tracking: ${shipmentData.trackingNumber}`);
+    // Check response properly - FIXED CONDITION
+    if (response && response.success === true) {
+      toast.success(`✅ Shipment created successfully!`);
+      toast.success(`Tracking Number: ${formData.trackingNumber}`);
       setShowSuccess(true);
-
+      
+      // Redirect after 2 seconds
       setTimeout(() => {
-        router.push('/Shipping');
+        router.push('/shippings/manual-shipping');
       }, 2000);
     } else {
-      throw new Error('Failed to create shipment');
+      // Handle error response
+      const errorMsg = response?.message || 'Failed to create shipment';
+      console.error('❌ Shipment creation failed:', errorMsg);
+      toast.error(errorMsg);
+      setServerErrors([{ msg: errorMsg }]);
     }
 
   } catch (error) {
+    console.error('❌ Submit error:', error);
     toast.dismiss(loadingToast);
-    console.error('Error details:', error);
-    toast.error(error.message || 'Failed to create shipment');
-    setServerErrors([{ msg: error.message }]);
+    
+    const errorMessage = error.response?.data?.message || error.message || 'Shipment creation failed';
+    toast.error(errorMessage);
+    setServerErrors([{ msg: errorMessage }]);
+    
   } finally {
     setIsSubmitting(false);
   }

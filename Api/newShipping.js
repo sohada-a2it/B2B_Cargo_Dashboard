@@ -63,3 +63,33 @@ export const getAllNewShipments = async (params = {}) => {
     };
   }
 };
+
+// Update shipment status
+export const updateShipmentStatus = async (shipmentId, statusData) => {
+  try {
+    console.log('📦 Updating shipment status:', { shipmentId, statusData });
+
+    // Make API call to update status
+    const response = await axiosInstance.put(`/updateShipmentStatus/${shipmentId}`, statusData);
+
+    if (response.data.success) {
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message || 'Shipment status updated successfully'
+      };
+    }
+
+    throw new Error(response.data.message || 'Failed to update shipment status');
+
+  } catch (error) {
+    console.error('❌ Update shipment status error:', error);
+
+    return {
+      success: false,
+      data: null,
+      message: error.response?.data?.error || error.message || 'Failed to update shipment status',
+      error: error.response?.data || null
+    };
+  }
+};
