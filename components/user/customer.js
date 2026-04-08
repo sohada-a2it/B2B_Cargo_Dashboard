@@ -425,23 +425,7 @@ const CustomersPage = () => {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
               <p className="text-gray-600 mt-1">Manage all users, staff and customers</p>
-            </div>
-            
-            <div className="flex gap-2">
-              <button
-                onClick={fetchAllUsers}
-                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Refresh"
-              >
-                <FiRefreshCw size={20} />
-              </button>
-              <button
-                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Export"
-              >
-                <FiDownload size={20} />
-              </button>
-            </div>
+            </div> 
           </div>
 
           {/* Stats */}

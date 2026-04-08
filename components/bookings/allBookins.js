@@ -2430,7 +2430,7 @@ const handleSavePriceQuote = async (bookingId, quoteData) => {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Stats Cards - FIXED: Now showing all statuses with correct counts */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 xl:grid-cols-8 gap-3 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
           {visibleStats.map((stat) => (
             <StatCard
               key={stat.key}

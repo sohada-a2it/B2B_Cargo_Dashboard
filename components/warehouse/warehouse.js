@@ -23,7 +23,8 @@ import {
   Warehouse, Layers, Tag, Hash, Weight, Ruler, AlertOctagon,
   RefreshCw, Eye, Download, Filter, ArrowLeft, ChevronLeft, ChevronRight,
   ClipboardList, ThumbsUp, ThumbsDown, Camera, FileText, Upload, Image, Trash2,
-  Home, Clock, Printer, Box, Truck, DollarSign, Plus, Minus, Edit, ChevronDown
+  Home, Clock, Printer, Box, Truck, DollarSign, Plus, Minus, Edit, ChevronDown,
+  Ship
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -82,13 +83,16 @@ const DISPOSITION_OPTIONS = [
   { value: 'quarantine', label: 'Quarantine - Hold', icon: AlertOctagon }
 ];
 
+// app/warehouse/page.jsx - STATUS_COLORS কনস্ট্যান্ট আপডেট
+
 const STATUS_COLORS = {
-  'expected': { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Expected' },
-  'received': { bg: 'bg-green-100', text: 'text-green-700', label: 'Received' },
-  'inspected': { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Inspected' },
-  'stored': { bg: 'bg-purple-100', text: 'text-purple-700', label: 'In Storage' },
-  'damaged_report': { bg: 'bg-red-100', text: 'text-red-700', label: 'Damaged' },
-  'shortage_report': { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'Shortage' }
+    'expected': { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Expected' },
+    'received': { bg: 'bg-green-100', text: 'text-green-700', label: 'Received' },
+    'inspected': { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Inspected' },
+    'consolidated': { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Consolidated' },  // ← Add this
+    'stored': { bg: 'bg-purple-100', text: 'text-purple-700', label: 'In Storage' },
+    'damaged_report': { bg: 'bg-red-100', text: 'text-red-700', label: 'Damaged' },
+    'shortage_report': { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'Shortage' }
 };
 
 const ZONE_COLORS = {
@@ -1280,6 +1284,7 @@ export default function WarehousePage() {
     expected: 0,
     received: 0,
     inspected: 0,
+    consolidated: 0,  // ← Add this
     damaged: 0
   });
 // পেইজের ভিতরে, useState-এর পরে এই স্টেট যোগ করুন
@@ -1317,69 +1322,71 @@ const handleConfirmDelete = async () => {
   useEffect(() => {
     loadData();
   }, [activeTab]);
+ 
 
-  const loadData = async () => {
+const loadData = async () => {
     setLoading(true);
     try {
-      if (activeTab === 'expected') {
-        const result = await getExpectedShipments();
-        if (result.success) {
-          // Process expected shipments to ensure packages are properly extracted
-          const processedShipments = result.data.map(shipment => {
-            const packages = extractPackages(shipment);
-            return {
-              ...shipment,
-              _packages: packages, // Store processed packages
-              packageCount: packages.length,
-              totalItems: packages.reduce((sum, p) => sum + (p.quantity || 1), 0),
-              totalWeight: packages.reduce((sum, p) => sum + ((p.weight || 0) * (p.quantity || 1)), 0)
-            };
-          });
-          
-          setExpectedShipments(processedShipments);
-          setStats(prev => ({ 
-            ...prev, 
-            expected: processedShipments.length 
-          }));
+        if (activeTab === 'expected') {
+            const result = await getExpectedShipments();
+            if (result.success) {
+                const processedShipments = result.data.map(shipment => {
+                    const packages = extractPackages(shipment);
+                    return {
+                        ...shipment,
+                        _packages: packages,
+                        packageCount: packages.length,
+                        totalItems: packages.reduce((sum, p) => sum + (p.quantity || 1), 0),
+                        totalWeight: packages.reduce((sum, p) => sum + ((p.weight || 0) * (p.quantity || 1)), 0)
+                    };
+                });
+                
+                setExpectedShipments(processedShipments);
+                setStats(prev => ({ 
+                    ...prev, 
+                    expected: processedShipments.length 
+                }));
+            }
+        } else {
+            const result = await getWarehouseReceipts({ limit: 50 });
+            if (result.success) {
+                const processedReceipts = result.data.map(receipt => {
+                    const packages = extractPackages(receipt);
+                    return {
+                        ...receipt,
+                        _packages: packages,
+                        packageCount: packages.length,
+                        totalItems: packages.reduce((sum, p) => sum + (p.quantity || 1), 0),
+                        totalWeight: packages.reduce((sum, p) => sum + ((p.weight || 0) * (p.quantity || 1)), 0)
+                    };
+                });
+                
+                setReceipts(processedReceipts);
+                
+                const received = processedReceipts.filter(r => r.status === 'received').length;
+                const inspected = processedReceipts.filter(r => r.status === 'inspected').length;
+                // ✅ ADD THIS: Count consolidated receipts
+                const consolidated = processedReceipts.filter(r => r.status === 'consolidated').length;
+                const damaged = processedReceipts.filter(r => 
+                    r.inspection?.condition && r.inspection.condition !== 'Good'
+                ).length;
+                
+                setStats({
+                    expected: stats.expected,
+                    received,
+                    inspected,
+                    consolidated,  // ← Add this
+                    damaged
+                });
+            }
         }
-      } else {
-        const result = await getWarehouseReceipts({ limit: 50 });
-        if (result.success) {
-          // Process receipts to ensure packages are properly extracted
-          const processedReceipts = result.data.map(receipt => {
-            const packages = extractPackages(receipt);
-            return {
-              ...receipt,
-              _packages: packages,
-              packageCount: packages.length,
-              totalItems: packages.reduce((sum, p) => sum + (p.quantity || 1), 0),
-              totalWeight: packages.reduce((sum, p) => sum + ((p.weight || 0) * (p.quantity || 1)), 0)
-            };
-          });
-          
-          setReceipts(processedReceipts);
-          
-          const received = processedReceipts.filter(r => r.status === 'received').length;
-          const inspected = processedReceipts.filter(r => r.status === 'inspected').length;
-          const damaged = processedReceipts.filter(r => 
-            r.inspection?.condition && r.inspection.condition !== 'Good'
-          ).length;
-          
-          setStats({
-            expected: stats.expected,
-            received,
-            inspected,
-            damaged
-          });
-        }
-      }
     } catch (error) {
-      console.error('Load error:', error);
-      toast.error('Failed to load data');
+        console.error('Load error:', error);
+        toast.error('Failed to load data');
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
-  };
+};
 
   const handleReceiveClick = (shipment) => {
     setSelectedShipment(shipment);
@@ -1388,12 +1395,20 @@ const handleConfirmDelete = async () => {
     setShowModal(true);
   };
 
-  const handleInspectClick = (receipt) => {
-    setSelectedReceipt(receipt);
-    setSelectedShipment(null);
-    setModalMode('inspect');
-    setShowModal(true);
-  };
+  // app/warehouse/page.jsx - handleInspectClick ফাংশন আপডেট করুন
+
+const handleInspectClick = (receipt) => {
+  // ✅ CHECK: যদি receipt already consolidated হয়, তাহলে inspect করতে দেবেন না
+  if (receipt.status === 'consolidated') {
+    toast.info(`Shipment ${receipt.receiptNumber} has already been consolidated and cannot be inspected again.`);
+    return;
+  }
+  
+  setSelectedReceipt(receipt);
+  setSelectedShipment(null);
+  setModalMode('inspect');
+  setShowModal(true);
+};
 
   const handleViewDetails = async (receipt) => {
     try {
@@ -1479,6 +1494,7 @@ const handleConfirmDelete = async () => {
           <StatCard title="Expected" value={stats.expected} icon={Package} color="blue" />
           <StatCard title="Received" value={stats.received} icon={CheckCircle} color="green" />
           <StatCard title="Inspected" value={stats.inspected} icon={ClipboardList} color="purple" />
+          <StatCard title="Consolidated" value={stats.consolidated} icon={Ship} color="orange" />  {/* নতুন */}
           <StatCard title="Damaged" value={stats.damaged} icon={AlertOctagon} color="red" />
         </div>
 
@@ -1648,7 +1664,7 @@ const handleConfirmDelete = async () => {
           </div>
         </div>
         
-        {/* Action Buttons */}
+        {/* Action Buttons - শুধু View এবং Delete থাকবে, Inspect বাটন এখানে থাকবে না */}
         <div className="flex items-center space-x-1">
           <button
             onClick={() => handleViewDetails(receipt)}
@@ -1657,7 +1673,6 @@ const handleConfirmDelete = async () => {
           >
             <Eye className="h-4 w-4 text-gray-600" />
           </button>
-          {/* ✅ Delete Button - Admin Only */}
           <button
             onClick={() => handleDeleteClick(receipt)}
             className="p-1.5 hover:bg-red-100 rounded-lg"
@@ -1695,7 +1710,7 @@ const handleConfirmDelete = async () => {
         </div>
       </div>
 
-      {/* Footer */}
+      {/* Footer - এখানে শুধু Consolidated ব্যাজ বা Inspect/Re-inspect বাটন থাকবে */}
       <div className="flex items-center justify-between pt-2 border-t border-gray-100">
         <div className="flex items-center">
           <ConditionIcon className={`h-3.5 w-3.5 mr-1 ${
@@ -1705,7 +1720,23 @@ const handleConfirmDelete = async () => {
             {getConditionDisplayText(receipt.inspection?.condition || 'Good')}
           </span>
         </div>
-        {!receipt.inspection ? (
+        
+        {/* ✅ Consolidated status - NO inspect/re-inspect button */}
+        {receipt.status === 'consolidated' ? (
+          <div className="flex items-center space-x-2">
+            <span className="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-lg flex items-center">
+              <CheckCircle className="h-3 w-3 mr-1" />
+              Consolidated ✓
+            </span>
+            <button
+              onClick={() => handleViewDetails(receipt)}
+              className="p-1 hover:bg-gray-100 rounded-lg"
+              title="View Details"
+            >
+              <Eye className="h-4 w-4 text-gray-600" />
+            </button>
+          </div>
+        ) : !receipt.inspection ? (
           <button
             onClick={() => handleInspectClick(receipt)}
             className="text-xs bg-[#E67E22] text-white px-3 py-1 rounded-lg hover:bg-[#d35400]"
@@ -1757,15 +1788,44 @@ const handleConfirmDelete = async () => {
               </div>
 
               {/* Status Badge */}
-              {selectedReceiptDetails.receipt?.status && (
-                <div className={`inline-flex items-center px-3 py-1 rounded-full ${
-                  STATUS_COLORS[selectedReceiptDetails.receipt.status]?.bg || 'bg-gray-100'
-                } ${
-                  STATUS_COLORS[selectedReceiptDetails.receipt.status]?.text || 'text-gray-700'
-                } text-sm mb-4`}>
-                  {STATUS_COLORS[selectedReceiptDetails.receipt.status]?.label || selectedReceiptDetails.receipt.status}
-                </div>
-              )}
+              // app/warehouse/page.jsx - Receipt Details Modal-এ
+
+{/* Status Badge */}
+{selectedReceiptDetails.receipt?.status && (
+  <div className={`inline-flex items-center px-3 py-1 rounded-full ${
+    STATUS_COLORS[selectedReceiptDetails.receipt.status]?.bg || 'bg-gray-100'
+  } ${
+    STATUS_COLORS[selectedReceiptDetails.receipt.status]?.text || 'text-gray-700'
+  } text-sm mb-4`}>
+    {STATUS_COLORS[selectedReceiptDetails.receipt.status]?.label || selectedReceiptDetails.receipt.status}
+  </div>
+)}
+
+{/* ✅ Show consolidation info if consolidated */}
+{selectedReceiptDetails.receipt?.status === 'consolidated' && (
+  <div className="bg-purple-50 rounded-lg p-4 mb-4 border border-purple-200">
+    <h3 className="text-sm font-medium text-purple-700 mb-2 flex items-center">
+      <Ship className="h-4 w-4 mr-2" />
+      Consolidation Information
+    </h3>
+    <div className="space-y-1 text-sm">
+      <div className="flex justify-between">
+        <span className="text-gray-500">Consolidated At:</span>
+        <span className="font-medium">
+          {selectedReceiptDetails.receipt?.consolidatedAt 
+            ? formatDate(selectedReceiptDetails.receipt.consolidatedAt)
+            : 'N/A'}
+        </span>
+      </div>
+      {selectedReceiptDetails.receipt?.consolidationId && (
+        <div className="flex justify-between">
+          <span className="text-gray-500">Consolidation ID:</span>
+          <span className="font-medium">{selectedReceiptDetails.receipt.consolidationId}</span>
+        </div>
+      )}
+    </div>
+  </div>
+)}
 
               {/* Two Column Layout */}
               <div className="grid grid-cols-3 gap-4">
@@ -1823,43 +1883,35 @@ const handleConfirmDelete = async () => {
                   {extractPackages(selectedReceiptDetails.receipt).length > 0 && (
                     <div className="bg-gray-50 rounded-lg p-4">
                       <h3 className="text-sm font-medium text-gray-700 mb-3">Received Packages</h3>
-                      <div className="space-y-2">
-                        {extractPackages(selectedReceiptDetails.receipt).map((pkg, idx) => {
-                          const conditionColor = pkg.condition === 'Good' ? 'bg-green-100' : 'bg-red-100';
-                          return (
-                            <div key={idx} className="bg-white rounded-lg p-3 border border-gray-200">
-                              <div className="flex items-start justify-between">
-                                <div>
-                                  <div className="flex items-center space-x-2">
-                                    <span className="text-sm font-medium">{pkg.description || 'Package'}</span>
-                                    <span className={`px-2 py-0.5 text-xs rounded-full ${conditionColor}`}>
-                                      {pkg.condition || 'Good'}
-                                    </span>
-                                  </div>
-                                  <div className="grid grid-cols-4 gap-4 mt-2 text-xs">
-                                    <div>
-                                      <span className="text-gray-500">Type:</span>
-                                      <span className="ml-1 font-medium">{pkg.packagingType || pkg.packageType || 'N/A'}</span>
-                                    </div>
-                                    <div>
-                                      <span className="text-gray-500">Qty:</span>
-                                      <span className="ml-1 font-medium">{pkg.quantity || 1}</span>
-                                    </div>
-                                    <div>
-                                      <span className="text-gray-500">Weight:</span>
-                                      <span className="ml-1 font-medium">{pkg.weight || 0} kg</span>
-                                    </div>
-                                    <div>
-                                      <span className="text-gray-500">Volume:</span>
-                                      <span className="ml-1 font-medium">{pkg.volume || 0} m³</span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      
+<div className="space-y-2">
+  {selectedReceiptDetails.receipt?.status !== 'consolidated' && (
+    <button
+      onClick={() => {
+        setShowDetailsModal(false);
+        handleInspectClick(selectedReceiptDetails.receipt);
+      }}
+      className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center justify-center"
+    >
+      <ClipboardList className="h-4 w-4 mr-2" />
+      {selectedReceiptDetails.receipt.inspection ? 'Re-inspect' : 'Inspect'}
+    </button>
+  )}
+  
+  {selectedReceiptDetails.receipt?.status === 'consolidated' && (
+    <div className="w-full px-4 py-2 bg-purple-50 text-purple-700 rounded-lg flex items-center justify-center">
+      <CheckCircle className="h-4 w-4 mr-2" />
+      Shipment Consolidated
+    </div>
+  )}
+  
+  <button
+    onClick={() => setShowDetailsModal(false)}
+    className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+  >
+    Close
+  </button>
+</div>
                     </div>
                   )}
                 </div>

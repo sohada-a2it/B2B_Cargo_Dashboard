@@ -21,6 +21,8 @@ import {
   Calendar, AlertCircle, FileText, Send, Flag, Edit3,
   CheckCircle, AlertTriangle
 } from 'lucide-react';
+import { getAuthToken } from '@/helper/SessionHelper';
+import { useRouter } from 'next/navigation';
 
 // ==================== COLOR CONSTANTS ====================
 const COLORS = {
@@ -1047,6 +1049,13 @@ const ShipmentDetailsModal = ({ isOpen, onClose, shipment, onStatusUpdated }) =>
 
 // ==================== MAIN COMPONENT ====================
 export default function AllShipments() {
+  const router = useRouter(); 
+  useEffect(() => {  // ← এই পুরো useEffect যোগ করুন
+    const token = getAuthToken();
+    if (!token) {
+      router.push('/');
+    }
+  }, []);
   const [loading, setLoading] = useState(true);
   const [shipments, setShipments] = useState([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, pages: 1 });
@@ -1163,13 +1172,7 @@ export default function AllShipments() {
               <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
                 {summary.total} Total
               </span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Button variant="light" size="sm" onClick={handleExport} icon={<ExportIcon className="h-4 w-4" />}>
-                Export
-              </Button>
-              <Button variant="light" size="sm" onClick={fetchShipments} icon={<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />} />
-            </div>
+            </div> 
           </div>
         </div>
       </div>

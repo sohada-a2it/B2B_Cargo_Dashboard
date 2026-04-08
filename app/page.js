@@ -140,15 +140,20 @@ export default function LoginPage() {
       document.documentElement.style.overflow = '';
     };
   }, []);
-   
-  useEffect(() => {
-    const token = getAuthToken();
-    const user = getUserDetails();
     
-    if (token && user) {
-      router.replace('/dashboard'); 
-    }
-  }, [router]);
+
+useEffect(() => {
+  const token = getAuthToken();
+  const user = getUserDetails();
+  
+  // URL থেকে redirect প্যারামিটার নিন
+  const searchParams = new URLSearchParams(window.location.search);
+  const redirectUrl = searchParams.get('redirect') || '/dashboard';
+  
+  if (token && user) {
+    router.replace(redirectUrl); 
+  }
+}, [router]);
    
   const [formData, setFormData] = useState({
     email: '',
@@ -253,7 +258,9 @@ export default function LoginPage() {
           }
           
           setEmail(formData.email);
-          
+          // URL থেকে redirect প্যারামিটার নিন
+  const searchParams = new URLSearchParams(window.location.search);
+  const redirectUrl = searchParams.get('redirect') || '/dashboard';
           toast.success(
             <div>
               <strong>Login Successful!</strong>
@@ -267,7 +274,7 @@ export default function LoginPage() {
           );
           
           setTimeout(() => {
-            router.push('/dashboard');
+            router.push(redirectUrl);
           }, 3000);
         } else {
           toast.error(response.message || 'Invalid email or password', {

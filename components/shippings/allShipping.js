@@ -475,6 +475,8 @@ const RETURN_STATUS_CONFIG = {
 // ==================== COMPONENTS ====================
 
 // Button Component
+// AllShipments.jsx - Button কম্পোনেন্ট আপডেট করুন
+
 const Button = ({
   children,
   type = 'button',
@@ -491,13 +493,13 @@ const Button = ({
   const baseClasses = 'rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 inline-flex items-center justify-center';
   
   const variants = {
-    primary: `bg-[${COLORS.primary}] text-white hover:bg-[#d35400] focus:ring-[${COLORS.primary}] shadow-sm`,
-    secondary: `bg-[${COLORS.secondary}] text-white hover:bg-[#2c5a8c] focus:ring-[${COLORS.secondary}]`,
-    outline: `border-2 border-[${COLORS.primary}] text-[${COLORS.primary}] hover:bg-[${COLORS.primaryLight}] focus:ring-[${COLORS.primary}]`,
-    light: `bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-gray-500`,
-    success: `bg-[${COLORS.success}] text-white hover:bg-[#0d9488] focus:ring-[${COLORS.success}]`,
-    danger: `bg-[${COLORS.danger}] text-white hover:bg-[#dc2626] focus:ring-[${COLORS.danger}]`,
-    warning: `bg-[${COLORS.warning}] text-white hover:bg-[#d97706] focus:ring-[${COLORS.warning}]`,
+    primary: 'bg-orange-500 text-white hover:bg-orange-600 focus:ring-orange-500 shadow-sm',
+    secondary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-600',
+    outline: 'border-2 border-orange-500 text-orange-500 hover:bg-orange-50 focus:ring-orange-500',
+    light: 'bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-gray-500',
+    success: 'bg-green-500 text-white hover:bg-green-600 focus:ring-green-500',
+    danger: 'bg-red-500 text-white hover:bg-red-600 focus:ring-red-500',
+    warning: 'bg-yellow-500 text-white hover:bg-yellow-600 focus:ring-yellow-500',
     ghost: 'text-gray-600 hover:bg-gray-100 focus:ring-gray-500'
   };
 

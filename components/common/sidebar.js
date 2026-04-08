@@ -118,13 +118,13 @@ const menuItems = [
         roles: ['admin']
       },
       {
-        title: 'Create New',
+        title: 'Create Booking',
         path: '/Bookings/create_bookings',
         icon: <HiOutlinePlus className="w-4 h-4" />,
         roles: ['admin']
       }, 
       {
-        title: 'Create Manually',
+        title: 'Create Manual Booking',
         path: '/Bookings/create_manually',
         icon: <HiOutlinePlus className="w-4 h-4" />,
         roles: ['admin']

@@ -21,6 +21,7 @@ import {
   CreditCard, Repeat, Anchor, History,
   Receipt, Clock, Flag, Check
 } from 'lucide-react';
+import { getAuthToken } from '@/helper/SessionHelper';
 
 // ==================== CONSTANTS ====================
 
@@ -290,7 +291,13 @@ const StepIndicator = ({ step, currentStep, title }) => {
 
 // ==================== MAIN COMPONENT ====================
 export default function CreateBooking() {
-  const router = useRouter();
+    const router = useRouter();
+  useEffect(() => {  // ← এই পুরো useEffect যোগ করুন
+    const token = getAuthToken();
+    if (!token) {
+      router.push('/');
+    }
+  }, []); 
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -684,7 +691,7 @@ const createCustomerFromSender = async (senderData) => {
       firstName,
       lastName,
       email: senderData.email.toLowerCase(),
-      password: randomPassword,  // ← Add generated password
+      password: randomPassword,
       phone: senderData.phone || "",
       role: "customer",
       companyName: senderData.companyName || "",
@@ -692,18 +699,19 @@ const createCustomerFromSender = async (senderData) => {
       businessType: "Trader",
       originCountries: ["China", "Thailand"],
       destinationMarkets: [formData.shipmentDetails.destination],
-      provider: "local",  // ← Change from 'google' to 'local'
+      provider: "local",
       isVerified: true,
       status: "active",
       isActive: true,
       emailVerified: true
     };
 
-    console.log("📤 Sending customer data with generated password");
+    console.log("📤 Sending customer data:", customerData);
     
     const response = await registerWithoutOTP(customerData);
     console.log("📥 Customer creation response:", response);
     
+    // Extract customer ID from response
     let customerId = null;
     if (response && response.success) {
       customerId = response.data?._id || response.data?.id || response._id || response.id;
@@ -715,9 +723,9 @@ const createCustomerFromSender = async (senderData) => {
     } else if (response && response.exists) {
       // User already exists
       toast.info(`ℹ️ Customer already exists: ${senderData.email}`);
-      return response.data?._id;
+      return response.data?._id || response.user?._id;
     } else {
-      toast.warning(`⚠️ Customer creation issue for ${senderData.email}`);
+      console.warn("⚠️ No customer ID in response");
       return null;
     }
     
@@ -725,15 +733,18 @@ const createCustomerFromSender = async (senderData) => {
     console.error("❌ Error creating customer:", error);
     
     // Check if user already exists
-    if (error.message?.includes('duplicate') || 
-        error.message?.includes('already exists') ||
-        error.response?.data?.message?.includes('already exists')) {
+    const errorMsg = error.response?.data?.message || error.message;
+    if (errorMsg?.includes('duplicate') || errorMsg?.includes('already exists')) {
       toast.info(`ℹ️ Customer already exists: ${senderData.email}`);
-      if (error.response?.data?.data?._id) {
-        return error.response.data.data._id;
+      // Try to find existing customer
+      try {
+        // You may need to add a findCustomerByEmail API call here
+        return null;
+      } catch (e) {
+        return null;
       }
     } else {
-      toast.error(`❌ Customer creation failed: ${error.message}`);
+      toast.error(`❌ Customer creation failed: ${errorMsg}`);
     }
     return null;
   }
@@ -894,13 +905,21 @@ const handleSubmit = async (e) => {
   // Auto-generate tracking number if empty
   if (!formData.trackingNumber) {
     generateTrackingNumber();
-    // Wait a moment for tracking number to be set
     await new Promise(resolve => setTimeout(resolve, 100));
   }
 
   if (!formData.trackingNumber) {
     toast.error('Please generate a tracking number');
     return;
+  }
+
+  // ========== 🔥 CREATE CUSTOMER FROM SENDER ==========
+  let customerId = null;
+  if (formData.sender.email) {
+    customerId = await createCustomerFromSender(formData.sender);
+    if (!customerId) {
+      toast.warning('Could not create/find customer. Shipment will be created without customer link.');
+    }
   }
 
   const loadingToast = toast.loading('Creating shipment...');
@@ -926,9 +945,10 @@ const handleSubmit = async (e) => {
       });
     }
 
-    // Build shipment payload
+    // Build shipment payload with customerId
     const shipmentData = {
       createdBy: adminUser?._id,
+      customer: customerId,  // ← Add customer ID here
       serviceType: formData.serviceType,
       shipmentClassification: {
         mainType: formData.shipmentClassification.mainType,
@@ -988,24 +1008,25 @@ const handleSubmit = async (e) => {
     };
 
     console.log('📤 Submitting shipment data:', shipmentData);
+    console.log('👤 Customer ID:', customerId);
     
     const response = await createShipment(shipmentData);
     
     console.log('📥 Response from createShipment:', response);
     toast.dismiss(loadingToast);
 
-    // Check response properly - FIXED CONDITION
     if (response && response.success === true) {
       toast.success(`✅ Shipment created successfully!`);
       toast.success(`Tracking Number: ${formData.trackingNumber}`);
+      if (customerId) {
+        toast.success(`✅ Customer linked: ${formData.sender.email}`);
+      }
       setShowSuccess(true);
       
-      // Redirect after 2 seconds
       setTimeout(() => {
         router.push('/shippings/manual-shipping');
       }, 2000);
     } else {
-      // Handle error response
       const errorMsg = response?.message || 'Failed to create shipment';
       console.error('❌ Shipment creation failed:', errorMsg);
       toast.error(errorMsg);

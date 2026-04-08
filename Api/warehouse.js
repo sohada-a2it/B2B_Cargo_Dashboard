@@ -7,7 +7,38 @@ import axiosInstance from '@/lib/axiosInstance';
 // services/warehouseService.js
 // services/warehouseService.js - আপনার existing ফাইল
 // Api/warehouse.js - এটা যোগ করুন
+// Consolidate shipment function
+// /Api/consolidation.js - একদম শুরুতে যোগ করুন
 
+// ওয়ারহাউজ রিসিপ্ট কনসলিডেট করার ফাংশন
+export const consolidateWarehouseReceipt = async (receiptId) => {
+  try {
+    const response = await api.patch(`/warehouse/receipts/${receiptId}/consolidate`, {
+      status: 'consolidated'
+    });
+    return { success: true, data: response.data };
+  } catch (error) {
+    return { success: false, message: error.response?.data?.message };
+  }
+};
+export const consolidateShipment = async (receiptId, consolidationData) => {
+  try {
+    const response = await fetch(`${API_URL}/warehouse/receipts/${receiptId}/consolidate`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify(consolidationData)
+    });
+    
+    const data = await response.json();
+    return { success: response.ok, data, message: data.message };
+  } catch (error) {
+    console.error('Consolidation error:', error);
+    return { success: false, message: error.message };
+  }
+};
 // Get single shipment by ID (for receive page)
 export const getShipmentById = async (shipmentId) => {
   try {

@@ -141,15 +141,9 @@ const InvoicePDF = ({ invoice, companyInfo }) => {
           </View>
           <View style={pdfStyles.invoiceSection}>
             <Text style={pdfStyles.invoiceTitle}>INVOICE</Text>
-            <Text style={pdfStyles.invoiceDetails}>#{invoice.invoiceNumber}</Text>
-            <Text style={pdfStyles.invoiceDetails}>Date: {formatDatePDF(invoice.invoiceDate)}</Text>
-            <Text style={pdfStyles.invoiceDetails}>Due Date: {formatDatePDF(invoice.dueDate)}</Text>
+            <Text style={pdfStyles.invoiceDetails}>#{invoice.invoiceNumber}</Text> 
           </View>
-        </View>
-
-        <View style={[pdfStyles.status, getStatusStylePDF(invoice.paymentStatus)]}>
-          <Text>{getStatusTextPDF(invoice.paymentStatus)}</Text>
-        </View>
+        </View> 
 
         <View style={pdfStyles.section}>
           <Text style={pdfStyles.sectionTitle}>BILL TO</Text>
@@ -951,12 +945,11 @@ export default function InvoicesPage() {
             </div>
           </div>
         </div>
-
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <StatCard title="Total Invoices" value={summary.total} icon={Receipt} color="orange" />
+          {/* <StatCard title="Total Invoices" value={summary.total} icon={Receipt} color="orange" />
           <StatCard title="Paid" value={summary.paid} icon={CheckCircle} color="green" />
-          <StatCard title="Pending" value={summary.pending} icon={Clock} color="yellow" />
+          <StatCard title="Pending" value={summary.pending} icon={Clock} color="yellow" /> */}
           <StatCard title="Total Amount" value={formatCurrency(summary.totalAmount, 'USD')} icon={DollarSign} color="blue" />
         </div>
 
