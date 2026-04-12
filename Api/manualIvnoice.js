@@ -81,26 +81,27 @@ export const getInvoiceById = async (invoiceId) => {
  * @param {string} invoiceId - Invoice ID
  * @returns {Promise<Object>} Delete status
  */
-export const deleteInvoice = async (invoiceId) => {
-    try {
-        const response = await axiosInstance.delete(`/invoices/${invoiceId}`);
-        
-        if (response.data.success) {
-            return {
-                success: true,
-                message: response.data.message || 'Invoice deleted successfully'
-            };
-        }
-        
-        throw new Error(response.data.message || 'Failed to delete invoice');
-        
-    } catch (error) {
-        console.error('❌ Delete invoice error:', error);
-        return {
-            success: false,
-            message: error.response?.data?.message || error.message || 'Failed to delete invoice'
-        };
+export const ManualdeleteInvoice = async (invoiceId) => {
+  try {
+    const response = await axiosInstance.delete(`/deletemanualInvoice/${invoiceId}`);
+    
+    if (response.data.success) {
+      return {
+        success: true,
+        message: response.data.message || 'Invoice deleted successfully'
+      };
     }
+    
+    throw new Error(response.data.message || 'Failed to delete invoice');
+    
+  } catch (error) {
+    console.error('Delete invoice error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.error || error.message || 'Failed to delete invoice',
+      error: error.response?.data
+    };
+  }
 };
 
 /**

@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import {
   getAllNewShipments,
-  updateShipmentStatus
+   updateNewTrackingNumber as updateNewTrackingNumber,
 } from '@/Api/newShipping';
 import {
   getAllShipments as getAllOldShipments,
@@ -250,58 +250,50 @@ export default function AllTrackingPage() {
   };
 
   // Handle save tracking number
-  const handleSave = async (shipment) => {
-    if (!editValue.trim()) {
-      toast.warning('Tracking number cannot be empty');
-      return;
-    }
+// components/allTracking.jsx - handleSave ফাংশন
 
-    setSavingId(shipment._id);
-    try {
-      let result;
-      
-      if (shipment.type === 'new') {
-        // Update NEW shipment tracking
-        result = await updateShipmentStatus(shipment._id, {
-          trackingNumber: editValue.trim(),
-          notes: 'Tracking number updated manually',
-          updatedBy: 'admin'
-        });
-      } else {
-        // Update OLD shipment tracking
-        result = await updateOldTrackingNumber(shipment._id, editValue.trim());
-      }
-      
-      if (result.success) {
-        toast.success('✅ Tracking number updated successfully');
-        
-        // Update local state
-        const updatedShipments = shipments.map(s => 
-          s._id === shipment._id ? { ...s, trackingNumber: editValue.trim() } : s
-        );
-        
-        setShipments(updatedShipments);
-        applyFilter(updatedShipments, activeFilter);
-        
-        // Update stats
-        const newWithTracking = updatedShipments.filter(s => s.trackingNumber && s.trackingNumber.trim() !== '').length;
-        setStats({
-          total: updatedShipments.length,
-          withTracking: newWithTracking,
-          withoutTracking: updatedShipments.length - newWithTracking
-        });
-        
-        setEditingId(null);
-      } else {
-        toast.error(result.message || 'Update failed');
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      toast.error('Update failed');
-    } finally {
-      setSavingId(null);
+const handleSave = async (shipment) => {
+  if (!editValue.trim()) {
+    toast.warning('Tracking number cannot be empty');
+    return;
+  }
+
+  setSavingId(shipment._id);
+  try {
+    let result;
+    
+    if (shipment.type === 'new') {
+      // ✅ সঠিকভাবে কল করুন - শুধু স্ট্রিং পাঠান
+      console.log('Calling update for NEW shipment:', shipment._id, editValue.trim());
+      result = await updateNewTrackingNumber(shipment._id, editValue.trim());
+      console.log('API Response:', result);
+    } else {
+      result = await updateOldTrackingNumber(shipment._id, editValue.trim());
     }
-  };
+    
+    if (result && result.success) {
+      toast.success(`✅ Tracking number updated: ${editValue.trim()}`);
+      
+      // Update local state
+      const updatedShipments = shipments.map(s => 
+        s._id === shipment._id ? { ...s, trackingNumber: editValue.trim() } : s
+      );
+      
+      setShipments(updatedShipments);
+      applyFilter(updatedShipments, activeFilter);
+      
+      setEditingId(null);
+      setEditValue('');
+    } else {
+      toast.error(result?.message || 'Update failed');
+    }
+  } catch (error) {
+    console.error('Save error:', error);
+    toast.error(error.message || 'Update failed');
+  } finally {
+    setSavingId(null);
+  }
+};
 
   // Handle cancel edit
   const handleCancel = () => {

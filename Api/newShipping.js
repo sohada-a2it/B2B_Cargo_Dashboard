@@ -1,6 +1,5 @@
 import axiosInstance from '@/lib/axiosInstance';
-import Cookies from 'js-cookie';
-
+import Cookies from 'js-cookie'; 
 /**
  * Fetch all shipments (NewShipment)
  * @param {Object} params - Filters & pagination
@@ -90,6 +89,59 @@ export const updateShipmentStatus = async (shipmentId, statusData) => {
       data: null,
       message: error.response?.data?.error || error.message || 'Failed to update shipment status',
       error: error.response?.data || null
+    };
+  }
+};
+// Api/newShipping.js - সম্পূর্ণ নতুন updateTrackingNumber ফাংশন
+
+// Api/newShipping.js
+
+import axios from 'axios';
+import { getAuthToken } from '@/helper/SessionHelper';
+
+// ✅ API_URL ডিফাইন করুন
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+export const updateNewTrackingNumber = async (shipmentId, trackingNumber) => {
+  try {
+    if (!shipmentId) throw new Error('Shipment ID is required');
+    if (!trackingNumber) throw new Error('Tracking number is required');
+    
+    const safeTrackingNumber = String(trackingNumber).trim();
+    
+    if (safeTrackingNumber === '') {
+      throw new Error('Tracking number cannot be empty');
+    }
+    
+    const token = getAuthToken();
+    
+    console.log('📤 Calling API:', `${API_URL}/api/v1/new-update-shipment-tracking/${shipmentId}`);
+    
+    // ✅ ফুল URL ব্যবহার করুন
+    const response = await axios.put(
+      `${API_URL}/new-update-shipment-tracking/${shipmentId}`,
+      { trackingNumber: safeTrackingNumber },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    console.log('✅ API Response:', response.data);
+    
+    return {
+      success: true,
+      data: response.data,
+      message: 'Tracking number updated successfully'
+    };
+    
+  } catch (error) {
+    console.error('❌ API Error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || 'Failed to update tracking number'
     };
   }
 };

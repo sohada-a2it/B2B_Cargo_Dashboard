@@ -26,7 +26,7 @@ import {
 } from '@/Api/invoice';
 
 // ==================== MANUAL INVOICE API IMPORT ====================
-import { getManualInvoices } from '@/Api/manualIvnoice';
+import { getManualInvoices ,ManualdeleteInvoice} from '@/Api/manualIvnoice';
 
 import { toast } from 'react-toastify';
 import {
@@ -48,7 +48,32 @@ Font.register({
   family: 'Helvetica',
   src: 'https://fonts.gstatic.com/s/helvetica/v1/Helvetica.ttf'
 });
-
+// Add this helper function for date formatting
+const formatDateSafe = (date, format = 'short') => {
+  if (!date) return 'N/A';
+  
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return 'N/A';
+    
+    if (format === 'short') {
+      return d.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } else if (format === 'long') {
+      return d.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    }
+    return d.toLocaleDateString();
+  } catch (error) {
+    return 'N/A';
+  }
+};
 const pdfStyles = StyleSheet.create({
   page: { padding: 40, fontSize: 10, fontFamily: 'Helvetica', backgroundColor: '#FFFFFF' },
   header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30, borderBottom: '2px solid #E67E22', paddingBottom: 20 },
@@ -348,7 +373,7 @@ const InvoiceCard = ({ invoice, onView, onEdit, onDelete, onMarkPaid, onPDF }) =
           </div>
           <div>
             <h3 className="font-medium text-gray-900">{invoice.invoiceNumber}</h3>
-            <p className="text-xs text-gray-500">{formatDate(invoice.invoiceDate, 'short')}</p>
+            <p className="text-xs text-gray-500">{formatDateSafe(invoice.invoiceDate, 'short')}</p>
           </div>
         </div>
         <div className="flex items-center space-x-1">
@@ -408,7 +433,12 @@ const InvoiceCard = ({ invoice, onView, onEdit, onDelete, onMarkPaid, onPDF }) =
 };
 
 // Invoice Table Row Component
+// InvoiceTableRow কম্পোনেন্টটি এভাবে আপডেট করুন (লাইন 530-560 এর কাছাকাছি)
+
 const InvoiceTableRow = ({ invoice, onView, onEdit, onDelete, onMarkPaid, onPDF, onSelect, isSelected }) => {
+  // ম্যানুয়াল ইনভয়েসের জন্য সবসময় ডিলিট বাটন দেখাবে
+  const showDeleteButton = invoice.isManual ? true : canDeleteInvoice(invoice.status);
+  
   return (
     <tr className="hover:bg-gray-50 transition-colors">
       <td className="px-4 py-3">
@@ -422,7 +452,7 @@ const InvoiceTableRow = ({ invoice, onView, onEdit, onDelete, onMarkPaid, onPDF,
             <span className="ml-2 text-xs px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded">Manual</span>
           )}
         </div>
-      </td>
+       </td>
       <td className="px-4 py-3">
         <div className="flex items-center space-x-2">
           <div className="w-7 h-7 bg-orange-100 rounded-full flex items-center justify-center">
@@ -433,22 +463,33 @@ const InvoiceTableRow = ({ invoice, onView, onEdit, onDelete, onMarkPaid, onPDF,
             <p className="text-xs text-gray-500">{invoice.customerInfo?.contactPerson || ''}</p>
           </div>
         </div>
-      </td>
+       </td>
       <td className="px-4 py-3 text-sm">
-        <div className="flex items-center"><Calendar className="h-3 w-3 mr-1 text-gray-400" />{formatDate(invoice.invoiceDate, 'short')}</div>
-      </td>
+        <div className="flex items-center"><Calendar className="h-3 w-3 mr-1 text-gray-400" />{formatDateSafe(invoice.invoiceDate, 'short')}</div>
+       </td>
       <td className="px-4 py-3 text-sm font-medium text-right">
         <span className="font-bold text-[#E67E22]">{formatCurrency(invoice.totalAmount, invoice.currency)}</span>
-      </td>
+       </td>
       <td className="px-4 py-3">
         <div className="flex items-center justify-end space-x-1">
-          <button onClick={() => onView(invoice._id)} className="p-1.5 hover:bg-gray-100 rounded-lg" title="View"><Eye className="h-4 w-4 text-gray-600" /></button>
-          <button onClick={() => onPDF(invoice._id)} className="p-1.5 hover:bg-gray-100 rounded-lg" title="Download PDF"><FileText className="h-4 w-4 text-red-500" /></button>
-          {canDeleteInvoice(invoice.status) && (
-            <button onClick={() => onDelete(invoice._id)} className="p-1.5 hover:bg-red-100 rounded-lg" title="Delete"><Trash2 className="h-4 w-4 text-red-400" /></button>
+          <button onClick={() => onView(invoice._id)} className="p-1.5 hover:bg-gray-100 rounded-lg" title="View">
+            <Eye className="h-4 w-4 text-gray-600" />
+          </button>
+          <button onClick={() => onPDF(invoice._id)} className="p-1.5 hover:bg-gray-100 rounded-lg" title="Download PDF">
+            <FileText className="h-4 w-4 text-red-500" />
+          </button>
+          {/* ✅ ডিলিট বাটন - ম্যানুয়াল ইনভয়েসের জন্য সবসময় দেখাবে */}
+          {showDeleteButton && (
+            <button 
+              onClick={() => onDelete(invoice._id)} 
+              className="p-1.5 hover:bg-red-100 rounded-lg" 
+              title="Delete"
+            >
+              <Trash2 className="h-4 w-4 text-red-400" />
+            </button>
           )}
         </div>
-      </td>
+       </td>
     </tr>
   );
 };
@@ -899,19 +940,37 @@ export default function InvoicesPage() {
     }
   };
 
-  const handleDeleteInvoice = async (invoiceId) => {
-    const invoice = allInvoices.find(inv => inv._id === invoiceId);
-    if (invoice?.isManual) {
-      toast.info('Manual invoice deletion coming soon');
-      return;
-    }
-    
-    const result = await deleteInvoice(invoiceId);
+
+const handleDeleteInvoice = async (invoiceId) => {
+  const invoice = allInvoices.find(inv => inv._id === invoiceId);
+  
+  if (!invoice) {
+    toast.error('Invoice not found');
+    return;
+  }
+  
+  // ম্যানুয়াল ইনভয়েস চেক করুন
+  if (invoice.isManual) {
+    // ম্যানুয়াল ইনভয়েস ডিলিট করার API কল
+    const result = await ManualdeleteInvoice(invoiceId);
     if (result.success) {
-      toast.success('Invoice deleted');
-      loadData();
+      toast.success('Manual invoice deleted successfully');
+      loadData(); // লিস্ট রিফ্রেশ করুন
+    } else {
+      toast.error(result.message || 'Failed to delete manual invoice');
     }
-  };
+    return;
+  }
+  
+  // রেগুলার ইনভয়েস ডিলিট করার API কল
+  const result = await deleteInvoice(invoiceId);
+  if (result.success) {
+    toast.success('Invoice deleted successfully');
+    loadData(); // লিস্ট রিফ্রেশ করুন
+  } else {
+    toast.error(result.message || 'Failed to delete invoice');
+  }
+};
 
   // Pagination
   const paginatedInvoices = filteredInvoices.slice(

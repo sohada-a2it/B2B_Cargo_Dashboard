@@ -903,15 +903,30 @@ const handleSubmit = async (e) => {
   }
 
   // Auto-generate tracking number if empty
-  if (!formData.trackingNumber) {
-    generateTrackingNumber();
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
+ // Auto-generate tracking number if empty
+let finalTrackingNumber = formData.trackingNumber;
 
-  if (!formData.trackingNumber) {
-    toast.error('Please generate a tracking number');
-    return;
-  }
+if (!finalTrackingNumber) {
+  // Generate new tracking number
+  const prefix = 'CLG-';
+  const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const numbers = '23456789';
+  
+  let randomPart = '';
+  for (let i = 0; i < 2; i++) randomPart += letters[Math.floor(Math.random() * letters.length)];
+  for (let i = 0; i < 4; i++) randomPart += numbers[Math.floor(Math.random() * numbers.length)];
+  for (let i = 0; i < 2; i++) randomPart += letters[Math.floor(Math.random() * letters.length)];
+  
+  finalTrackingNumber = `${prefix}${randomPart}`;
+  
+  // Update form data
+  setFormData(prev => ({ ...prev, trackingNumber: finalTrackingNumber }));
+}
+
+if (!finalTrackingNumber) {
+  toast.error('Please generate a tracking number');
+  return;
+}
 
   // ========== 🔥 CREATE CUSTOMER FROM SENDER ==========
   let customerId = null;
@@ -1001,7 +1016,7 @@ const handleSubmit = async (e) => {
         company: formData.courier.company,
         serviceType: formData.serviceType
       },
-      trackingNumber: formData.trackingNumber,
+     trackingNumber: finalTrackingNumber,
       status: formData.status,
       shipmentStatus: formData.shipmentStatus,
       timeline: timelineEntries
