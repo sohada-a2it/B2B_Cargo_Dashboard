@@ -585,26 +585,7 @@ export default function CreateBooking() {
     } finally {
       setLoadingLocation(false);
     }
-  }, []);
-
-  const loadPostalCodes = useCallback((country, city) => {
-    if (!country || !city) return;
-    
-    setLoadingLocation(true);
-    try {
-      const postalData = getPostalCodes(country, city);
-      if (postalData && postalData.length > 0) {
-        setPostalCodes(postalData);
-      } else {
-        setPostalCodes([]);
-      }
-    } catch (error) {
-      console.error('Error loading postal codes:', error);
-      setPostalCodes([]);
-    } finally {
-      setLoadingLocation(false);
-    }
-  }, []);
+  }, []); 
 
   // ==================== VALIDATION FUNCTIONS ====================
   
@@ -1296,89 +1277,46 @@ export default function CreateBooking() {
         setServerErrors([{ msg: errorMsg }]);
       }
     } catch (error) {
-  toast.dismiss(loadingToast);
-  
-  console.error('❌ ========== ERROR DETAILS ==========');
-  console.error('Error:', error);
-  console.error('Error Response:', error.response);
-  console.error('Error Data:', error.response?.data);
-  console.error('Error Status:', error.response?.status);
-  
-  let errorMessage = 'Network error. Please try again.';
-  
-  // 🔥 শুধু এই অংশটি যোগ করুন - টাইমআউট হ্যান্ডলিং
-  if (error.message?.includes('timeout') || error.code === 'ECONNABORTED') {
-    toast.success('🎉 Booking request sent! Server is processing. Redirecting...');
-    setShowSuccess(true);
-    setTimeout(() => {
-      router.push('/Bookings/my_bookings');
-    }, 2000);
-    return;
-  }
-  // ================================================
-  
-  if (error.response?.data) {
-    if (typeof error.response.data === 'string') {
-      errorMessage = error.response.data;
-    } else if (error.response.data.message) {
-      errorMessage = error.response.data.message;
-    } else if (error.response.data.error) {
-      errorMessage = error.response.data.error;
-    } else if (error.response.data.msg) {
-      errorMessage = error.response.data.msg;
-    } else if (Array.isArray(error.response.data)) {
-      errorMessage = error.response.data.map(e => e.msg || e.message).join(', ');
-    } else {
-      errorMessage = JSON.stringify(error.response.data);
+      toast.dismiss(loadingToast);
+      
+      console.error('❌ ERROR DETAILS:', error);
+      
+      let errorMessage = 'Failed to create booking';
+      
+      if (error.response?.data) {
+        if (typeof error.response.data === 'string') {
+          errorMessage = error.response.data;
+        } else if (error.response.data.message) {
+          errorMessage = error.response.data.message;
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error;
+        } else {
+          errorMessage = JSON.stringify(error.response.data);
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      if (errorMessage.toLowerCase().includes('customer')) {
+        toast.error('👤 Customer information is invalid. Please reselect customer.');
+      } else if (errorMessage.toLowerCase().includes('package')) {
+        toast.error('📦 Package details are incomplete. Please check all package fields.');
+      } else if (errorMessage.toLowerCase().includes('date')) {
+        toast.error('📅 Date information is invalid. Please check departure and arrival dates.');
+      } else if (errorMessage.toLowerCase().includes('address')) {
+        toast.error('📍 Address information is incomplete. Please check receiver address.');
+      } else if (errorMessage.toLowerCase().includes('email')) {
+        toast.error('📧 Email address is invalid. Please check sender and receiver emails.');
+      } else if (errorMessage.toLowerCase().includes('state') || errorMessage.toLowerCase().includes('city')) {
+        toast.error('🗺️ Location information is incomplete. Please select state and city.');
+      } else {
+        toast.error(`❌ ${errorMessage}`);
+      }
+      
+      setServerErrors([{ msg: errorMessage }]);
+    } finally {
+      setIsSubmitting(false);
     }
-  } else if (error.message) {
-    errorMessage = error.message;
-  }
-  
-  let friendlyMessage = '';
-  
-  if (errorMessage.toLowerCase().includes('customer')) {
-    friendlyMessage = '👤 Customer information is invalid. Please reselect customer.';
-  } else if (errorMessage.toLowerCase().includes('package')) {
-    friendlyMessage = '📦 Package details are incomplete. Please check all package fields.';
-  } else if (errorMessage.toLowerCase().includes('address')) {
-    friendlyMessage = '📍 Address information is incomplete. Please check receiver address.';
-  } else if (errorMessage.toLowerCase().includes('date')) {
-    friendlyMessage = '📅 Date information is invalid. Please check departure and arrival dates.';
-  } else if (errorMessage.toLowerCase().includes('email')) {
-    friendlyMessage = '📧 Email address is invalid. Please check sender and receiver emails.';
-  } else if (errorMessage.toLowerCase().includes('state')) {
-    friendlyMessage = '🗺️ State is required. Please select a state for the receiver.';
-  } else if (errorMessage.toLowerCase().includes('city')) {
-    friendlyMessage = '🏙️ City is required. Please select a city for the receiver.';
-  } else if (errorMessage.toLowerCase().includes('country')) {
-    friendlyMessage = '🌍 Country is required. Please select a country for the receiver.';
-  } else if (errorMessage.toLowerCase().includes('weight')) {
-    friendlyMessage = '⚖️ Package weight is required. Please add weight for all packages.';
-  } else if (errorMessage.toLowerCase().includes('quantity')) {
-    friendlyMessage = '📦 Package quantity is required. Please add quantity for all packages.';
-  } else if (errorMessage.toLowerCase().includes('description')) {
-    friendlyMessage = '📝 Package description is required. Please add description for all packages.';
-  } else if (errorMessage.toLowerCase().includes('pickup')) {
-    friendlyMessage = '🚚 Pickup information is incomplete. Please check pickup details.';
-  } else if (errorMessage.toLowerCase().includes('validation')) {
-    friendlyMessage = '⚠️ Validation error. Please check all fields and try again.';
-  } else if (errorMessage.toLowerCase().includes('500') || errorMessage.toLowerCase().includes('server')) {
-    friendlyMessage = '🔧 Server error. Please try again later or contact support.';
-  } else if (errorMessage.toLowerCase().includes('401') || errorMessage.toLowerCase().includes('unauthorized')) {
-    friendlyMessage = '🔒 Session expired. Please login again.';
-    setTimeout(() => {
-      router.push('/auth/login');
-    }, 2000);
-  } else {
-    friendlyMessage = `❌ ${errorMessage}`;
-  }
-  
-  toast.error(friendlyMessage);
-  setServerErrors([{ msg: errorMessage }]);
-} finally {
-  setIsSubmitting(false);
-}
   };
 
   // ==================== RENDER ====================
@@ -2018,14 +1956,7 @@ export default function CreateBooking() {
                       name="sender.address.country"
                       value={formData.sender.address.country}
                       onChange={handleInputChange}
-                    />
-
-                    <Input
-                      label="Postal Code"
-                      name="sender.address.postalCode"
-                      value={formData.sender.address.postalCode}
-                      onChange={handleInputChange}
-                    />
+                    /> 
 
                     {/* Pickup Required Checkbox */}
                     <div className="col-span-2 mt-2 pt-2 border-t">
@@ -2181,21 +2112,7 @@ export default function CreateBooking() {
                       disabled={!formData.receiver.address.state || loadingLocation}
                       loading={loadingLocation}
                       placeholder={loadingLocation ? 'Loading cities...' : 'Select city'}
-                    />
-
-                    {/* Postal Code Dropdown */}
-                    <Select
-                      label="Postal Code"
-                      name="receiver.address.postalCode"
-                      value={formData.receiver.address.postalCode}
-                      onChange={handleInputChange}
-                      options={postalCodes.map(code => ({ value: code, label: code }))}
-                      icon={MapPin}
-                      error={errors['receiver.address.postalCode']}
-                      disabled={!formData.receiver.address.city || loadingLocation}
-                      loading={loadingLocation}
-                      placeholder={loadingLocation ? 'Loading codes...' : 'Select postal code'}
-                    />
+                    /> 
 
                     <div className="col-span-2">
                       <TextArea
